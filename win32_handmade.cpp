@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <stdint.h>
 #include <xinput.h>
+#include <dsound.h>
 
 #define BYTES_PER_PIXEL 4
 
@@ -22,7 +23,7 @@ static OffscreenBuffer g_backbuffer;
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
 typedef X_INPUT_GET_STATE(x_input_get_state);
 X_INPUT_GET_STATE(XInputGetStateStub) {
-    return 0;
+    return ERROR_DEVICE_NOT_CONNECTED;
 }
 static x_input_get_state *XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
@@ -31,7 +32,7 @@ static x_input_get_state *XInputGetState_ = XInputGetStateStub;
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_VIBRATION *pVibration)
 typedef X_INPUT_SET_STATE(x_input_set_state);
 X_INPUT_SET_STATE(XInputSetStateStub) {
-    return 0;
+    return ERROR_DEVICE_NOT_CONNECTED;
 }
 static x_input_set_state *XInputSetState_ = XInputSetStateStub;
 #define XInputSetState XInputSetState_
@@ -44,6 +45,44 @@ static void win32_load_xinput() {
     }
 }
 
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
+typedef DIRECT_SOUND_CREATE(direct_sound_create);
+
+static void init_dsound(HWND window, int32_t samples_per_second, int32_t buffer_size) {
+    HMODULE dsound_library = LoadLibrary("dsound.dll");
+    if (!dsound_library) return;
+
+    WAVEFORMATEX wave_format = {};
+    wave_format.wFormatTag = WAVE_FORMAT_PCM;
+    wave_format.nChannels = 2;
+    wave_format.nSamplesPerSec = samples_per_second;
+    wave_format.wBitsPerSample = 16;
+    wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+    wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+    wave_format.cbSize = 0;
+
+    direct_sound_create *DirectSoundCreate = (direct_sound_create *)GetProcAddress(dsound_library, "DirectSoundCreate");
+    LPDIRECTSOUND direct_sound;
+    if (!DirectSoundCreate) return;
+    if (!SUCCEEDED(DirectSoundCreate(0, &direct_sound, 0))) return;
+    if (!SUCCEEDED(direct_sound->SetCooperativeLevel(window, DSSCL_PRIORITY))) return;
+
+    LPDIRECTSOUNDBUFFER primary_buffer;
+    DSBUFFERDESC buffer_description = {};
+    buffer_description.dwSize = sizeof(buffer_description);
+    buffer_description.dwFlags = DSBCAPS_PRIMARYBUFFER;
+    if (!SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &primary_buffer, 0))) return;
+
+    primary_buffer->SetFormat(&wave_format);
+
+    // secondary buffer
+    LPDIRECTSOUNDBUFFER secondary_buffer;
+    buffer_description = {};
+    buffer_description.dwSize = sizeof(buffer_description);
+    buffer_description.dwFlags = 0;
+    buffer_description.lpwfxFormat = &wave_format;
+    if (!SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &secondary_buffer, 0))) return;
+}
 
 static WindowDimension get_window_dimension(HWND window) {
     RECT client_rect;
@@ -83,7 +122,7 @@ static void resize_dib_section(OffscreenBuffer *buffer, int width, int height) {
     buffer->info.bmiHeader.biCompression = BI_RGB;
 
     int bitmap_memory_size = (buffer->width * buffer->height) * BYTES_PER_PIXEL;
-    buffer->memory = VirtualAlloc(0, bitmap_memory_size, MEM_COMMIT, PAGE_READWRITE); 
+    buffer->memory = VirtualAlloc(0, bitmap_memory_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE); 
 }
 
 static void display_buffer_in_window(OffscreenBuffer *buffer, HDC device_context, int window_width, int window_height) {
@@ -112,8 +151,6 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
             OutputDebugString("WM_ACTIVATEAPP\n");
         } break;
 
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
         case WM_KEYDOWN:
         case WM_KEYUP:
         {
@@ -194,6 +231,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     int x_offset = 0;
     int y_offset = 0;
     HDC device_context = GetDC(window);
+    init_dsound(window, 48000, 48000 * sizeof(int16_t) * 2);
+
     while(running) {
         while(PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
