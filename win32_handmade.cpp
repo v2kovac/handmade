@@ -18,6 +18,7 @@ struct WindowDimension {
 
 static bool running;
 static OffscreenBuffer g_backbuffer;
+static LPDIRECTSOUNDBUFFER g_secondary_buffer;
 
 // XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
@@ -76,12 +77,12 @@ static void init_dsound(HWND window, int32_t samples_per_second, int32_t buffer_
     primary_buffer->SetFormat(&wave_format);
 
     // secondary buffer
-    LPDIRECTSOUNDBUFFER secondary_buffer;
     buffer_description = {};
     buffer_description.dwSize = sizeof(buffer_description);
     buffer_description.dwFlags = 0;
     buffer_description.lpwfxFormat = &wave_format;
-    if (!SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &secondary_buffer, 0))) return;
+    buffer_description.dwBufferBytes = buffer_size;
+    if (!SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &g_secondary_buffer, 0))) return;
 }
 
 static WindowDimension get_window_dimension(HWND window) {
@@ -231,7 +232,17 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     int x_offset = 0;
     int y_offset = 0;
     HDC device_context = GetDC(window);
-    init_dsound(window, 48000, 48000 * sizeof(int16_t) * 2);
+
+    int samples_per_second = 48000;
+    int tone_hz = 256;
+    int16_t tone_volume = 1000;
+    uint32_t running_sample_index = 0;
+    int square_wave_period = samples_per_second / tone_hz;
+    int half_square_wave_period = square_wave_period / 2;
+    int bytes_per_sample = sizeof(int16_t) * 2;
+    int secondary_buffer_size = samples_per_second * bytes_per_sample;
+    init_dsound(window, samples_per_second, secondary_buffer_size);
+    g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
     while(running) {
         while(PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
@@ -269,6 +280,47 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         render_weird_gradient(&g_backbuffer, x_offset, y_offset);
         x_offset++;
         y_offset += 2;
+
+        // sound stuff
+        DWORD play_cursor;
+        DWORD write_cursor;
+        if (!SUCCEEDED(g_secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor))) return 2;
+        DWORD byte_to_lock = running_sample_index * bytes_per_sample % secondary_buffer_size;
+        DWORD bytes_to_write;
+        if (byte_to_lock > play_cursor) {
+            bytes_to_write = secondary_buffer_size - byte_to_lock + play_cursor;
+        } else {
+            bytes_to_write = play_cursor - byte_to_lock;
+        }
+
+        VOID *region1;
+        DWORD region1_size;
+        VOID *region2;
+        DWORD region2_size;
+        HRESULT error = g_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0);
+        if (SUCCEEDED(error)) {
+            int16_t *sample_out = (int16_t *)region1;
+            DWORD region1_sample_count = region1_size / bytes_per_sample;
+            for (DWORD sample_index = 0; sample_index < region1_sample_count; sample_index++) {
+                int16_t sample_value = ((running_sample_index / half_square_wave_period) % 2) ? tone_volume : -tone_volume;
+                *sample_out++ = sample_value;
+                *sample_out++ = sample_value;
+                running_sample_index++;
+            }
+
+            sample_out = (int16_t *)region2;
+            DWORD region2_sample_count = region2_size / bytes_per_sample;
+            for (DWORD sample_index = 0; sample_index < region2_sample_count; sample_index++) {
+                int16_t sample_value = ((running_sample_index / half_square_wave_period) % 2) ? tone_volume : -tone_volume;
+                *sample_out++ = sample_value;
+                *sample_out++ = sample_value;
+                running_sample_index++;
+            }
+
+            g_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+        } else {
+            // TODO
+        }
 
         WindowDimension dim = get_window_dimension(window);
         display_buffer_in_window(&g_backbuffer, device_context, dim.width, dim.height);
