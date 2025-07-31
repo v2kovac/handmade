@@ -2,8 +2,10 @@
 #include <stdint.h>
 #include <xinput.h>
 #include <dsound.h>
+#include <math.h>
 
 #define BYTES_PER_PIXEL 4
+#define PI32 3.14159265359f
 
 struct OffscreenBuffer {
     BITMAPINFO info;
@@ -15,10 +17,23 @@ struct WindowDimension {
     int width;
     int height;
 };
+struct SoundOutput {
+    int samples_per_second = 48000;
+    int tone_hz = 256;
+    int16_t tone_volume = 1000;
+    uint32_t running_sample_index = 0;
+    int wave_period = samples_per_second / tone_hz;
+    int bytes_per_sample = sizeof(int16_t) * 2;
+    int secondary_buffer_size = samples_per_second * bytes_per_sample;
+    int latency_sample_count = samples_per_second / 15;
+    float t_sine = 0;
+};
 
-static bool running;
+static bool g_running;
 static OffscreenBuffer g_backbuffer;
 static LPDIRECTSOUNDBUFFER g_secondary_buffer;
+static int g_x_offset = 0;
+static int g_y_offset = 0;
 
 // XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
@@ -133,6 +148,43 @@ static void display_buffer_in_window(OffscreenBuffer *buffer, HDC device_context
                   buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
+static void fill_sound_buffer(SoundOutput *sound_output, DWORD byte_to_lock, DWORD bytes_to_write) {
+    VOID *region1;
+    DWORD region1_size;
+    VOID *region2;
+    DWORD region2_size;
+    HRESULT error = g_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0);
+    if (SUCCEEDED(error)) {
+        int16_t *sample_out = (int16_t *)region1;
+        DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
+        for (DWORD sample_index = 0; sample_index < region1_sample_count; sample_index++) {
+            float sine_value = sinf(sound_output->t_sine);
+            int16_t sample_value = (int16_t) (sine_value * sound_output->tone_volume);
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+
+            sound_output->t_sine += 2.0f * PI32 * 1.0f / (float)sound_output->wave_period;
+            sound_output->running_sample_index++;
+        }
+
+        sample_out = (int16_t *)region2;
+        DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
+        for (DWORD sample_index = 0; sample_index < region2_sample_count; sample_index++) {
+            float sine_value = sinf(sound_output->t_sine);
+            int16_t sample_value = (int16_t)(sine_value * sound_output->tone_volume);
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+
+            sound_output->t_sine += 2.0f * PI32 * 1.0f / (float)sound_output->wave_period;
+            sound_output->running_sample_index++;
+        }
+
+        g_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+    } else {
+        // TODO
+    }
+}
+
 LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l_param) {
     LRESULT result = 0;
 
@@ -144,7 +196,7 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
         case WM_CLOSE:
         case WM_DESTROY:
         {
-            running = false;
+            g_running = false;
         } break;
 
         case WM_ACTIVATEAPP:
@@ -165,9 +217,13 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
             } else if (vk_code == 'Q') {
             } else if (vk_code == 'E') {
             } else if (vk_code == VK_UP) {
+                g_y_offset += 10;
             } else if (vk_code == VK_DOWN) {
+                g_y_offset -= 10;
             } else if (vk_code == VK_LEFT) {
+                g_x_offset -= 10;
             } else if (vk_code == VK_RIGHT) {
+                g_x_offset += 10;
             } else if (vk_code == VK_SPACE) {
                 OutputDebugString("Space: ");
                 if (was_down) {
@@ -228,26 +284,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     );
     if (window == NULL) return -1;
     MSG message;
-    running = true;
-    int x_offset = 0;
-    int y_offset = 0;
+    g_running = true;
+    g_x_offset = 0;
+    g_y_offset = 0;
     HDC device_context = GetDC(window);
 
-    int samples_per_second = 48000;
-    int tone_hz = 256;
-    int16_t tone_volume = 1000;
-    uint32_t running_sample_index = 0;
-    int square_wave_period = samples_per_second / tone_hz;
-    int half_square_wave_period = square_wave_period / 2;
-    int bytes_per_sample = sizeof(int16_t) * 2;
-    int secondary_buffer_size = samples_per_second * bytes_per_sample;
-    init_dsound(window, samples_per_second, secondary_buffer_size);
+    SoundOutput sound_output = {};
+    init_dsound(window, sound_output.samples_per_second, sound_output.secondary_buffer_size);
+    fill_sound_buffer(&sound_output, 0, sound_output.latency_sample_count * sound_output.bytes_per_sample);
     g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
-    while(running) {
+    while(g_running) {
         while(PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
-                running = false;
+                g_running = false;
             }
             TranslateMessage(&message);
             DispatchMessage(&message);
@@ -277,50 +327,25 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             }
         }
 
-        render_weird_gradient(&g_backbuffer, x_offset, y_offset);
-        x_offset++;
-        y_offset += 2;
+        render_weird_gradient(&g_backbuffer, g_x_offset, g_y_offset);
 
         // sound stuff
+        sound_output.tone_hz = 256 + g_y_offset;
+        sound_output.wave_period = sound_output.samples_per_second  / sound_output.tone_hz;
+
         DWORD play_cursor;
         DWORD write_cursor;
         if (!SUCCEEDED(g_secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor))) return 2;
-        DWORD byte_to_lock = running_sample_index * bytes_per_sample % secondary_buffer_size;
+
+        DWORD byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.secondary_buffer_size;
+        DWORD target_cursor = (play_cursor + (sound_output.latency_sample_count * sound_output.bytes_per_sample)) % sound_output.secondary_buffer_size;
         DWORD bytes_to_write;
-        if (byte_to_lock > play_cursor) {
-            bytes_to_write = secondary_buffer_size - byte_to_lock + play_cursor;
+        if (byte_to_lock > target_cursor) {
+            bytes_to_write = sound_output.secondary_buffer_size - byte_to_lock + target_cursor;
         } else {
-            bytes_to_write = play_cursor - byte_to_lock;
+            bytes_to_write = target_cursor - byte_to_lock;
         }
-
-        VOID *region1;
-        DWORD region1_size;
-        VOID *region2;
-        DWORD region2_size;
-        HRESULT error = g_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0);
-        if (SUCCEEDED(error)) {
-            int16_t *sample_out = (int16_t *)region1;
-            DWORD region1_sample_count = region1_size / bytes_per_sample;
-            for (DWORD sample_index = 0; sample_index < region1_sample_count; sample_index++) {
-                int16_t sample_value = ((running_sample_index / half_square_wave_period) % 2) ? tone_volume : -tone_volume;
-                *sample_out++ = sample_value;
-                *sample_out++ = sample_value;
-                running_sample_index++;
-            }
-
-            sample_out = (int16_t *)region2;
-            DWORD region2_sample_count = region2_size / bytes_per_sample;
-            for (DWORD sample_index = 0; sample_index < region2_sample_count; sample_index++) {
-                int16_t sample_value = ((running_sample_index / half_square_wave_period) % 2) ? tone_volume : -tone_volume;
-                *sample_out++ = sample_value;
-                *sample_out++ = sample_value;
-                running_sample_index++;
-            }
-
-            g_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
-        } else {
-            // TODO
-        }
+        fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
 
         WindowDimension dim = get_window_dimension(window);
         display_buffer_in_window(&g_backbuffer, device_context, dim.width, dim.height);
