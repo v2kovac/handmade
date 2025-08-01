@@ -256,6 +256,10 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
 }
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
+    LARGE_INTEGER perf_count_frequency_result;
+    QueryPerformanceFrequency(&perf_count_frequency_result);
+    int64_t perf_count_frequency = perf_count_frequency_result.QuadPart;
+
     WNDCLASS window_class = {};
 
     resize_dib_section(&g_backbuffer, 1280, 720);
@@ -294,6 +298,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     fill_sound_buffer(&sound_output, 0, sound_output.latency_sample_count * sound_output.bytes_per_sample);
     g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
+    LARGE_INTEGER last_counter;
+    QueryPerformanceCounter(&last_counter);
+    uint64_t last_cycle_count = __rdtsc();
     while(g_running) {
         while(PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
             if (message.message == WM_QUIT) {
@@ -349,6 +356,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
 
         WindowDimension dim = get_window_dimension(window);
         display_buffer_in_window(&g_backbuffer, device_context, dim.width, dim.height);
+
+        // fps stuff
+        LARGE_INTEGER end_counter;
+        QueryPerformanceCounter(&end_counter);
+        int64_t counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+        int32_t ms_per_frame = (int32_t)((1000 * counter_elapsed) / perf_count_frequency);
+        int32_t fps = perf_count_frequency / counter_elapsed;
+
+        uint64_t end_cycle_count = __rdtsc();
+        uint64_t cycles_elapsed = end_cycle_count - last_cycle_count;
+        int32_t mcpf = (int32_t)(cycles_elapsed / (1000 * 1000));
+
+        char buffer[256];
+        wsprintf(buffer, "Milliseconds/frame: %dms / %dFPS / %dmc/f\n", ms_per_frame, fps, mcpf);
+        OutputDebugString(buffer);
+        last_counter = end_counter;
+        last_cycle_count = end_cycle_count;
     }
 
     return 0;
