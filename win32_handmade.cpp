@@ -1,3 +1,4 @@
+// Windows Code - compile this file to get a windows app
 #include <windows.h>
 #include <stdint.h>
 #include <xinput.h>
@@ -6,6 +7,9 @@
 
 #define BYTES_PER_PIXEL 4
 #define PI32 3.14159265359f
+
+// include after
+#include "handmade.cpp"
 
 struct OffscreenBuffer {
     BITMAPINFO info;
@@ -109,17 +113,6 @@ static WindowDimension get_window_dimension(HWND window) {
     result.height = client_rect.bottom - client_rect.top;
 
     return result;
-}
-
-static void render_weird_gradient(OffscreenBuffer *buffer, int x_offset, int y_offset) {
-    uint32_t *arr = (uint32_t *)buffer->memory;
-    for (int y = 0; y < buffer->height; y++) {
-        for (int x = 0; x < buffer->width; x++) {
-            uint8_t blue = x + x_offset;
-            uint8_t green = y + y_offset;
-            *arr++ = ((green << 8) | blue);
-        }
-    }
 }
 
 static void resize_dib_section(OffscreenBuffer *buffer, int width, int height) {
@@ -334,8 +327,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             }
         }
 
-        render_weird_gradient(&g_backbuffer, g_x_offset, g_y_offset);
-
+        GameOffscreenBuffer game_offscreen_buffer = {};
+        game_offscreen_buffer.width = g_backbuffer.width;
+        game_offscreen_buffer.height = g_backbuffer.height;
+        game_offscreen_buffer.memory = g_backbuffer.memory;
+        game_update_and_render(&game_offscreen_buffer, g_x_offset, g_y_offset);
         // sound stuff
         sound_output.tone_hz = 256 + g_y_offset;
         sound_output.wave_period = sound_output.samples_per_second  / sound_output.tone_hz;
