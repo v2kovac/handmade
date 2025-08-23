@@ -12,6 +12,43 @@ struct GameOutputSoundBuffer {
     int16_t *samples;
 };
 
+struct GameButtonState {
+    int half_transition_count;
+    bool ended_down;
+};
+
+struct GameControllerInput {
+    bool is_analog;
+
+    float start_x;
+    float start_y;
+
+    float min_x;
+    float min_y;
+
+    float max_x;
+    float max_y;
+
+    float end_x;
+    float end_y;
+
+    union {
+        GameButtonState buttons[6];
+        struct {
+            GameButtonState up;
+            GameButtonState down;
+            GameButtonState left;
+            GameButtonState right;
+            GameButtonState left_shoulder;
+            GameButtonState right_shoulder;
+        };
+    };
+};
+
+struct GameInput {
+    GameControllerInput controllers[4];
+};
+
 static void game_output_sound(GameOutputSoundBuffer *sound_buffer, int tone_hz) {
     static float t_sine;
     int16_t tone_volume = 1000;
@@ -39,7 +76,22 @@ static void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int
     }
 }
 
-static void game_update_and_render(GameOffscreenBuffer *buffer, int x_offset, int y_offset, GameOutputSoundBuffer *sound_buffer, int tone_hz) {
+static void game_update_and_render(GameInput *input, GameOffscreenBuffer *buffer, GameOutputSoundBuffer *sound_buffer) {
+    static int x_offset = 0;
+    static int y_offset = 0;
+    static int tone_hz = 256;
+
+    GameControllerInput *input0 = &input->controllers[0];
+    if (input0->is_analog) {
+        tone_hz = 256 + (int)(128.0f * input0->end_y);
+        x_offset += (int)(4.0f * input0->end_x);
+    } else {
+    }
+
+    if (input0->down.ended_down) {
+        y_offset += 1;
+    }
+
     game_output_sound(sound_buffer, tone_hz);
     render_weird_gradient(buffer, x_offset, y_offset);
 }
