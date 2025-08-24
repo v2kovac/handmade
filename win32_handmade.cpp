@@ -3,6 +3,15 @@
 #include <math.h>
 
 #define BYTES_PER_PIXEL 4
+#if HANDMADE_INTERNAL
+struct DebugReadFileResult {
+    uint32_t contents_size;
+    void *contents;
+};
+static DebugReadFileResult debug_platform_read_entire_file(char *filename);
+static void debug_platform_free_file_memory(void *memory);
+static bool debug_platform_write_entire_file(char *filename, uint32_t memory_size, void *memory);
+#endif
 
 #include "handmade.cpp"
 
@@ -261,6 +270,69 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
 static void process_xinput_button(DWORD xinput_button_state, DWORD button_bit, GameButtonState *old_state, GameButtonState *new_state) {
     new_state->ended_down = (xinput_button_state & button_bit) == button_bit;
     new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+}
+
+static DebugReadFileResult debug_platform_read_entire_file(char *filename) {
+    DebugReadFileResult result = {};
+
+    HANDLE file_handle = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL);
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        assert(false);
+        exit(1);
+    }
+
+    LARGE_INTEGER file_size;
+    if (!GetFileSizeEx(file_handle, &file_size)) {
+        assert(false);
+        exit(1);
+    }
+
+    result.contents_size = safe_truncate_uint64(file_size.QuadPart);
+    result.contents = VirtualAlloc(NULL, result.contents_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    if (!result.contents) {
+        assert(false);
+        exit(1);
+    }
+
+    DWORD bytes_read;
+    if (ReadFile(file_handle, result.contents, result.contents_size, &bytes_read, NULL) && (result.contents_size == bytes_read)) {
+    } else {
+        assert(false);
+        exit(1);
+    }
+
+    CloseHandle(file_handle);
+
+    return result;
+}
+
+static void debug_platform_free_file_memory(void *memory) {
+    if (memory) {
+        VirtualFree(memory, NULL, MEM_RELEASE);
+    }
+}
+
+static bool debug_platform_write_entire_file(char *filename, uint32_t memory_size, void *memory) {
+    bool result = false;
+
+    HANDLE file_handle = CreateFile(filename, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
+    if (file_handle == INVALID_HANDLE_VALUE) {
+        assert(false);
+        exit(1);
+    }
+
+    DWORD bytes_written;
+    if (WriteFile(file_handle, memory, memory_size, &bytes_written, NULL)) {
+        assert(bytes_written == memory_size);
+        result = (bytes_written == memory_size);
+    } else {
+        assert(false);
+        exit(1);
+    }
+
+
+    CloseHandle(file_handle);
+    return result;
 }
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {

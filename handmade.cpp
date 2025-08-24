@@ -78,6 +78,12 @@ struct GameState {
     int y_offset;
 };
 
+static inline uint32_t safe_truncate_uint64(uint64_t value) {
+    assert(value <= 0xFFFFFF);
+    uint32_t result = (uint32_t)value;
+    return result;
+}
+
 static void game_output_sound(GameOutputSoundBuffer *sound_buffer, int tone_hz) {
     static float t_sine;
     int16_t tone_volume = 1000;
@@ -113,6 +119,13 @@ static void game_update_and_render(GameMemory *memory,
 
     GameState *game_state = (GameState *)memory->permanent_storage;
     if (!memory->is_initialized) {
+        char *filename = __FILE__;
+        DebugReadFileResult file = debug_platform_read_entire_file(filename);
+        if (file.contents) {
+            debug_platform_write_entire_file("test.out", file.contents_size, file.contents);
+            debug_platform_free_file_memory(file.contents);
+        }
+
         game_state->tone_hz = 256;
         memory->is_initialized = true;
     }
