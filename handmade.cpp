@@ -1,4 +1,17 @@
 // Game Code - Platform Independent
+#if HANDMADE_SLOW
+#define assert(expr) if (!(expr)) { *(int *)0 = 0; }
+#else
+#define assert(expr)
+#endif
+
+#define PI32 3.14159265359f
+#define array_count(array) (sizeof(array) / sizeof((array)[0]))
+#define kilobytes(value) ((value) * 1024LL)
+#define megabytes(value) (kilobytes(value) * 1024LL)
+#define gigabytes(value) (megabytes(value) * 1024LL)
+#define terabytes(value) (gigabytes(value) * 1024LL)
+
 
 struct GameOffscreenBuffer {
     void *memory;
@@ -49,6 +62,22 @@ struct GameInput {
     GameControllerInput controllers[4];
 };
 
+struct GameMemory {
+    bool is_initialized;
+
+    uint64_t permanent_storage_size;
+    void *permanent_storage;
+
+    uint64_t transient_storage_size;
+    void *transient_storage;
+};
+
+struct GameState {
+    int tone_hz;
+    int x_offset;
+    int y_offset;
+};
+
 static void game_output_sound(GameOutputSoundBuffer *sound_buffer, int tone_hz) {
     static float t_sine;
     int16_t tone_volume = 1000;
@@ -76,22 +105,29 @@ static void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int
     }
 }
 
-static void game_update_and_render(GameInput *input, GameOffscreenBuffer *buffer, GameOutputSoundBuffer *sound_buffer) {
-    static int x_offset = 0;
-    static int y_offset = 0;
-    static int tone_hz = 256;
+static void game_update_and_render(GameMemory *memory,
+                                   GameInput *input,
+                                   GameOffscreenBuffer *buffer,
+                                   GameOutputSoundBuffer *sound_buffer) {
+    assert(sizeof(GameState) <= memory->permanent_storage_size);
+
+    GameState *game_state = (GameState *)memory->permanent_storage;
+    if (!memory->is_initialized) {
+        game_state->tone_hz = 256;
+        memory->is_initialized = true;
+    }
 
     GameControllerInput *input0 = &input->controllers[0];
     if (input0->is_analog) {
-        tone_hz = 256 + (int)(128.0f * input0->end_y);
-        x_offset += (int)(4.0f * input0->end_x);
+        game_state->tone_hz = 256 + (int)(128.0f * input0->end_y);
+        game_state->x_offset += (int)(4.0f * input0->end_x);
     } else {
     }
 
     if (input0->down.ended_down) {
-        y_offset += 1;
+        game_state->y_offset += 1;
     }
 
-    game_output_sound(sound_buffer, tone_hz);
-    render_weird_gradient(buffer, x_offset, y_offset);
+    game_output_sound(sound_buffer, game_state->tone_hz);
+    render_weird_gradient(buffer, game_state->x_offset, game_state->y_offset);
 }

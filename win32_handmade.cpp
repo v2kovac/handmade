@@ -3,8 +3,6 @@
 #include <math.h>
 
 #define BYTES_PER_PIXEL 4
-#define PI32 3.14159265359f
-#define array_count(array) (sizeof(array) / sizeof((array)[0]))
 
 #include "handmade.cpp"
 
@@ -306,6 +304,19 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     clear_sound_buffer(&sound_output);
     g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
+#if HANDMADE_INTERNAL
+    LPVOID base_address = (LPVOID)terabytes(2);
+#else
+    LPVOID base_address = 0;
+#endif
+    GameMemory game_memory = {};
+    game_memory.permanent_storage_size = megabytes(64);
+    game_memory.transient_storage_size = gigabytes(4);
+    uint64_t total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
+
+    game_memory.permanent_storage = VirtualAlloc(0, total_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    game_memory.transient_storage = (uint8_t *)game_memory.permanent_storage + game_memory.permanent_storage_size;
+
     win32_load_xinput();
     GameInput inputs[2] = {};
     GameInput *new_input = &inputs[0];
@@ -399,7 +410,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         game_offscreen_buffer.height = g_backbuffer.height;
         game_offscreen_buffer.memory = g_backbuffer.memory;
 
-        game_update_and_render(new_input, &game_offscreen_buffer, &sound_buffer);
+        game_update_and_render(&game_memory, new_input, &game_offscreen_buffer, &sound_buffer);
         fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
 
         WindowDimension dim = get_window_dimension(window);
