@@ -1,0 +1,3 @@
+#!/bin/sh
+
+prlctl exec "Windows 11" cmd /c "Y: && cd handmade && shell && build"

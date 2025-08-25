@@ -216,38 +216,6 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
             OutputDebugString("WM_ACTIVATEAPP\n");
         } break;
 
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            uint32_t vk_code = w_param;
-            bool was_down = (l_param & (1 << 30)) != 0;
-            bool is_down = (l_param & (1 << 31)) == 0;
-            if (vk_code == 'W') {
-            } else if (vk_code == 'A') {
-            } else if (vk_code == 'S') {
-            } else if (vk_code == 'D') {
-            } else if (vk_code == 'Q') {
-            } else if (vk_code == 'E') {
-            } else if (vk_code == VK_UP) {
-                //g_y_offset += 10;
-            } else if (vk_code == VK_DOWN) {
-                //g_y_offset -= 10;
-            } else if (vk_code == VK_LEFT) {
-                //g_x_offset -= 10;
-            } else if (vk_code == VK_RIGHT) {
-                //g_x_offset += 10;
-            } else if (vk_code == VK_SPACE) {
-                OutputDebugString("Space: ");
-                if (was_down) {
-                    OutputDebugString("was_down ");
-                }
-                if (is_down) {
-                    OutputDebugString("is_down ");
-                }
-                OutputDebugString("\n");
-            } else if (vk_code == VK_ESCAPE) {
-            }
-        } break;
 
         case WM_PAINT:
         {
@@ -270,6 +238,11 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
 static void process_xinput_button(DWORD xinput_button_state, DWORD button_bit, GameButtonState *old_state, GameButtonState *new_state) {
     new_state->ended_down = (xinput_button_state & button_bit) == button_bit;
     new_state->half_transition_count = (old_state->ended_down != new_state->ended_down) ? 1 : 0;
+}
+
+static void process_keyboard_message(GameButtonState *new_state, bool is_down) {
+    new_state->ended_down = is_down;
+    new_state->half_transition_count++;
 }
 
 static DebugReadFileResult debug_platform_read_entire_file(char *filename) {
@@ -335,6 +308,51 @@ static bool debug_platform_write_entire_file(char *filename, uint32_t memory_siz
     return result;
 }
 
+static void process_pending_messages(GameControllerInput *keyboard_controller) {
+    MSG message;
+    while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
+        switch (message.message) {
+            case WM_QUIT: {
+                g_running = false;
+            } break;
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP: {
+                uint32_t vk_code = (uint32_t)message.wParam;
+                bool was_down = (message.lParam & (1 << 30)) != 0;
+                bool is_down = (message.lParam & (1 << 31)) == 0;
+                if (was_down == is_down) break;
+
+                if (vk_code == 'W') {
+                } else if (vk_code == 'A') {
+                } else if (vk_code == 'S') {
+                } else if (vk_code == 'D') {
+                } else if (vk_code == 'Q') {
+                    process_keyboard_message(&keyboard_controller->left_shoulder, is_down);
+                } else if (vk_code == 'E') {
+                    process_keyboard_message(&keyboard_controller->right_shoulder, is_down);
+                } else if (vk_code == VK_UP) {
+                    process_keyboard_message(&keyboard_controller->up, is_down);
+                } else if (vk_code == VK_DOWN) {
+                    process_keyboard_message(&keyboard_controller->down, is_down);
+                } else if (vk_code == VK_LEFT) {
+                    process_keyboard_message(&keyboard_controller->left, is_down);
+                } else if (vk_code == VK_RIGHT) {
+                    process_keyboard_message(&keyboard_controller->right, is_down);
+                } else if (vk_code == VK_SPACE) {
+                } else if (vk_code == VK_ESCAPE) {
+                    g_running = false;
+                }
+            } break;
+            default: {
+                TranslateMessage(&message);
+                DispatchMessage(&message);
+            } break;
+        }
+    }
+}
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
     LARGE_INTEGER perf_count_frequency_result;
     QueryPerformanceFrequency(&perf_count_frequency_result);
@@ -366,8 +384,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         instance,
         0
     );
-    if (window == NULL) return -1;
-    MSG message;
+    if (window == NULL) return 1;
     g_running = true;
     HDC device_context = GetDC(window);
 
@@ -386,7 +403,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     game_memory.transient_storage_size = gigabytes(4);
     uint64_t total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
 
-    game_memory.permanent_storage = VirtualAlloc(0, total_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    game_memory.permanent_storage = VirtualAlloc(base_address, total_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
     game_memory.transient_storage = (uint8_t *)game_memory.permanent_storage + game_memory.permanent_storage_size;
 
     win32_load_xinput();
@@ -398,15 +415,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     QueryPerformanceCounter(&last_counter);
     uint64_t last_cycle_count = __rdtsc();
     while (g_running) {
-        while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
-            if (message.message == WM_QUIT) {
-                g_running = false;
-            }
-            TranslateMessage(&message);
-            DispatchMessage(&message);
-        }
+        GameControllerInput *keyboard_controller = &new_input->controllers[0];
+        GameControllerInput zero_controller = {};
+        *keyboard_controller = zero_controller;
 
-        int max_controller_count = XUSER_MAX_COUNT;
+        process_pending_messages(keyboard_controller);
+
+
+        DWORD max_controller_count = XUSER_MAX_COUNT;
         if (max_controller_count > array_count(new_input->controllers)) {
             max_controller_count = array_count(new_input->controllers);
         }
@@ -453,8 +469,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_Y, &old_controller->right, &new_controller->right);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER, &old_controller->left_shoulder, &new_controller->left_shoulder);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER, &old_controller->right_shoulder, &new_controller->right_shoulder);
-
-
             }
         }
         // sound stuff
@@ -493,7 +507,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         QueryPerformanceCounter(&end_counter);
         int64_t counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
         int32_t ms_per_frame = (int32_t)((1000 * counter_elapsed) / perf_count_frequency);
-        int32_t fps = perf_count_frequency / counter_elapsed;
+        int32_t fps = (int32_t)(perf_count_frequency / counter_elapsed);
 
         uint64_t end_cycle_count = __rdtsc();
         uint64_t cycles_elapsed = end_cycle_count - last_cycle_count;
