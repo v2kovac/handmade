@@ -31,36 +31,43 @@ struct GameButtonState {
 };
 
 struct GameControllerInput {
-    bool is_analog;
-
-    float start_x;
-    float start_y;
-
-    float min_x;
-    float min_y;
-
-    float max_x;
-    float max_y;
-
-    float end_x;
-    float end_y;
+    bool is_connected = false;
+    bool is_analog = false;
+    float stick_avg_x;
+    float stick_avg_y;
 
     union {
-        GameButtonState buttons[6];
+        GameButtonState buttons[12];
         struct {
-            GameButtonState up;
-            GameButtonState down;
-            GameButtonState left;
-            GameButtonState right;
+            GameButtonState move_up;
+            GameButtonState move_down;
+            GameButtonState move_left;
+            GameButtonState move_right;
+
+            GameButtonState action_up;
+            GameButtonState action_down;
+            GameButtonState action_left;
+            GameButtonState action_right;
+
             GameButtonState left_shoulder;
             GameButtonState right_shoulder;
+
+            GameButtonState back;
+            GameButtonState start;
+
+            // keep this element last for bounds checking
+            GameButtonState terminator;
         };
     };
 };
 
 struct GameInput {
-    GameControllerInput controllers[4];
+    GameControllerInput controllers[5];
 };
+static inline GameControllerInput *get_controller(GameInput *input, int controller_index) {
+    assert(controller_index < array_count(input->controllers));
+    return &input->controllers[controller_index];
+}
 
 struct GameMemory {
     bool is_initialized;
@@ -115,6 +122,7 @@ static void game_update_and_render(GameMemory *memory,
                                    GameInput *input,
                                    GameOffscreenBuffer *buffer,
                                    GameOutputSoundBuffer *sound_buffer) {
+    assert(&input->controllers[0].terminator - &input->controllers[0].buttons[0] == array_count(input->controllers[0].buttons));
     assert(sizeof(GameState) <= memory->permanent_storage_size);
 
     GameState *game_state = (GameState *)memory->permanent_storage;
@@ -130,15 +138,22 @@ static void game_update_and_render(GameMemory *memory,
         memory->is_initialized = true;
     }
 
-    GameControllerInput *input0 = &input->controllers[0];
-    if (input0->is_analog) {
-        game_state->tone_hz = 256 + (int)(128.0f * input0->end_y);
-        game_state->x_offset += (int)(4.0f * input0->end_x);
-    } else {
-    }
+    for (int i = 0; i < array_count(input->controllers); i++) {
+        GameControllerInput *controller = get_controller(input, i);
+        if (controller->is_analog) {
+            game_state->tone_hz = 256 + (int)(128.0f * controller->stick_avg_y);
+            game_state->x_offset += (int)(4.0f * controller->stick_avg_x);
+        } else {
+            if (controller->move_left.ended_down) {
+                game_state->x_offset -= 1;
+            } else if (controller->move_right.ended_down) {
+                game_state->x_offset += 1;
+            }
+        }
 
-    if (input0->down.ended_down) {
-        game_state->y_offset += 1;
+        if (controller->action_down.ended_down) {
+            game_state->y_offset += 1;
+        }
     }
 
     game_output_sound(sound_buffer, game_state->tone_hz);

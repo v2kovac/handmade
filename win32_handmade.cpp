@@ -226,6 +226,13 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
             EndPaint(window, &paint);
         } break;
 
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            assert(!"this shouldn't get processed here");
+        } break;
         default:
         {
             result = DefWindowProc(window, message, w_param, l_param);
@@ -241,6 +248,7 @@ static void process_xinput_button(DWORD xinput_button_state, DWORD button_bit, G
 }
 
 static void process_keyboard_message(GameButtonState *new_state, bool is_down) {
+    assert(new_state->ended_down != is_down);
     new_state->ended_down = is_down;
     new_state->half_transition_count++;
 }
@@ -312,45 +320,65 @@ static void process_pending_messages(GameControllerInput *keyboard_controller) {
     MSG message;
     while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
         switch (message.message) {
-            case WM_QUIT: {
+            case WM_QUIT:
+            {
                 g_running = false;
             } break;
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
             case WM_KEYDOWN:
-            case WM_KEYUP: {
+            case WM_KEYUP:
+            {
                 uint32_t vk_code = (uint32_t)message.wParam;
                 bool was_down = (message.lParam & (1 << 30)) != 0;
                 bool is_down = (message.lParam & (1 << 31)) == 0;
                 if (was_down == is_down) break;
 
                 if (vk_code == 'W') {
+                    process_keyboard_message(&keyboard_controller->move_up, is_down);
                 } else if (vk_code == 'A') {
+                    process_keyboard_message(&keyboard_controller->move_left, is_down);
                 } else if (vk_code == 'S') {
+                    process_keyboard_message(&keyboard_controller->move_down, is_down);
                 } else if (vk_code == 'D') {
+                    process_keyboard_message(&keyboard_controller->move_right, is_down);
                 } else if (vk_code == 'Q') {
                     process_keyboard_message(&keyboard_controller->left_shoulder, is_down);
                 } else if (vk_code == 'E') {
                     process_keyboard_message(&keyboard_controller->right_shoulder, is_down);
                 } else if (vk_code == VK_UP) {
-                    process_keyboard_message(&keyboard_controller->up, is_down);
+                    process_keyboard_message(&keyboard_controller->action_up, is_down);
                 } else if (vk_code == VK_DOWN) {
-                    process_keyboard_message(&keyboard_controller->down, is_down);
+                    process_keyboard_message(&keyboard_controller->action_down, is_down);
                 } else if (vk_code == VK_LEFT) {
-                    process_keyboard_message(&keyboard_controller->left, is_down);
+                    process_keyboard_message(&keyboard_controller->action_left, is_down);
                 } else if (vk_code == VK_RIGHT) {
-                    process_keyboard_message(&keyboard_controller->right, is_down);
+                    process_keyboard_message(&keyboard_controller->action_right, is_down);
                 } else if (vk_code == VK_SPACE) {
+                    process_keyboard_message(&keyboard_controller->start, is_down);
+                } else if (vk_code == VK_BACK) {
+                    process_keyboard_message(&keyboard_controller->back, is_down);
                 } else if (vk_code == VK_ESCAPE) {
                     g_running = false;
                 }
             } break;
-            default: {
+            default:
+            {
                 TranslateMessage(&message);
                 DispatchMessage(&message);
             } break;
         }
     }
+}
+
+static float process_xinput_stick_value(SHORT value, SHORT deadzone_threshold) {
+    float result = 0;
+    if (value < -deadzone_threshold) {
+        result = (float)(value + deadzone_threshold) / (32768.0f - deadzone_threshold);
+    } else if (value > deadzone_threshold) {
+        result = float(value - deadzone_threshold) / (32767.0f - deadzone_threshold);
+    }
+    return result;
 }
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
@@ -415,60 +443,66 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     QueryPerformanceCounter(&last_counter);
     uint64_t last_cycle_count = __rdtsc();
     while (g_running) {
-        GameControllerInput *keyboard_controller = &new_input->controllers[0];
-        GameControllerInput zero_controller = {};
-        *keyboard_controller = zero_controller;
+        GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
+        GameControllerInput *old_keyboard_controller = get_controller(old_input, 0);
+        *new_keyboard_controller = {};
+        new_keyboard_controller->is_connected = true;
+        for (int i = 0; i < array_count(new_keyboard_controller->buttons); i++) {
+            new_keyboard_controller->buttons[i].ended_down = old_keyboard_controller->buttons[i].ended_down;
+        }
 
-        process_pending_messages(keyboard_controller);
+        process_pending_messages(new_keyboard_controller);
 
-
-        DWORD max_controller_count = XUSER_MAX_COUNT;
+        DWORD max_controller_count = XUSER_MAX_COUNT + 1; // plus 1 for keyboard
         if (max_controller_count > array_count(new_input->controllers)) {
             max_controller_count = array_count(new_input->controllers);
         }
-        for (DWORD i = 0; i < max_controller_count; i++) {
-            GameControllerInput *old_controller = &old_input->controllers[i];
-            GameControllerInput *new_controller = &new_input->controllers[i];
+        for (DWORD i = 1; i < max_controller_count; i++) {
+            GameControllerInput *old_controller = get_controller(old_input, i);
+            GameControllerInput *new_controller = get_controller(new_input, i);
 
             XINPUT_STATE controller_state;
             DWORD x_input_get_state_result = XInputGetState(i, &controller_state);
             if (x_input_get_state_result == ERROR_SUCCESS) {
                 // controller is plugged in
                 XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
+                new_controller->is_connected = true;
 
-                // todo
-                bool dpad_up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-                bool dpad_down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-                bool dpad_left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-                bool dpad_right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-                bool start = (pad->wButtons & XINPUT_GAMEPAD_START);
-                bool back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
-
-                new_controller->is_analog = true;
-                new_controller->start_x = old_controller->end_x;
-                new_controller->start_y = old_controller->end_y;
-
-                float x;
-                if (pad->sThumbLX < 0) {
-                    x = (float)pad->sThumbLX / 32768.0f;
-                } else {
-                    x = (float)pad->sThumbLX / 32767.0f;
+                new_controller->stick_avg_x = process_xinput_stick_value(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                new_controller->stick_avg_y = process_xinput_stick_value(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+                if ((new_controller->stick_avg_x != 0.0f) || (new_controller->stick_avg_y != 0.0f)) {
+                    new_controller->is_analog = true;
                 }
-                new_controller->min_x = new_controller->max_x = new_controller->end_x = x;
-                float y;
-                if (pad->sThumbLY < 0) {
-                    y = (float)pad->sThumbLY / 32768.0f;
-                } else {
-                    y = (float)pad->sThumbLY / 32767.0f;
-                }
-                new_controller->min_y = new_controller->max_y = new_controller->end_y = y;
 
-                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_A, &old_controller->down, &new_controller->down);
-                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_B, &old_controller->right, &new_controller->right);
-                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_X, &old_controller->left, &new_controller->left);
-                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_Y, &old_controller->right, &new_controller->right);
+                if (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP) {
+                    new_controller->stick_avg_y = 1.0f;
+                    new_controller->is_analog = false;
+                } else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN) {
+                    new_controller->stick_avg_y = -1.0f;
+                    new_controller->is_analog = false;
+                } else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT) {
+                    new_controller->stick_avg_x = -1.0f;
+                    new_controller->is_analog = false;
+                } else if (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) {
+                    new_controller->stick_avg_x = 1.0f;
+                    new_controller->is_analog = false;
+                } 
+
+
+                float threshold = 0.5f;
+                process_xinput_button((new_controller->stick_avg_x < -threshold) ? 1 : 0, 1, &old_controller->move_left, &new_controller->move_left);
+                process_xinput_button((new_controller->stick_avg_x > threshold) ? 1 : 0, 1, &old_controller->move_right, &new_controller->move_right);
+                process_xinput_button((new_controller->stick_avg_y < -threshold) ? 1 : 0, 1, &old_controller->move_down, &new_controller->move_down);
+                process_xinput_button((new_controller->stick_avg_y > threshold) ? 1 : 0, 1, &old_controller->move_up, &new_controller->move_up);
+
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_A, &old_controller->action_down, &new_controller->action_down);
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_B, &old_controller->action_right, &new_controller->action_right);
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_X, &old_controller->action_left, &new_controller->action_left);
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_Y, &old_controller->action_right, &new_controller->action_right);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER, &old_controller->left_shoulder, &new_controller->left_shoulder);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER, &old_controller->right_shoulder, &new_controller->right_shoulder);
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_START, &old_controller->start, &new_controller->start);
+                process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_BACK, &old_controller->back, &new_controller->back);
             }
         }
         // sound stuff
