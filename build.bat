@@ -25,6 +25,6 @@ cl ^
     -nologo ^
     -Gm- ^
     -Fmwin32_handmade.map ^
-    ..\win32_handmade.cpp user32.lib Gdi32.lib
+    ..\win32_handmade.cpp user32.lib Gdi32.lib winmm.lib
 
 popd
