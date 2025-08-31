@@ -104,6 +104,9 @@ static void game_output_sound(GameOutputSoundBuffer *sound_buffer, int tone_hz) 
         *sample_out++ = sample_value;
 
         t_sine += 2.0f * PI32 * 1.0f / (float)wave_period;
+        if (t_sine > (2.0f * PI32)) {
+            t_sine -= (2.0f * PI32);
+        }
     }
 }
 
@@ -118,10 +121,14 @@ static void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int
     }
 }
 
+static void game_get_sound_samples(GameMemory *memory, GameOutputSoundBuffer *sound_buffer) {
+    GameState *game_state = (GameState *)memory->permanent_storage;
+    game_output_sound(sound_buffer, game_state->tone_hz);
+}
+
 static void game_update_and_render(GameMemory *memory,
                                    GameInput *input,
-                                   GameOffscreenBuffer *buffer,
-                                   GameOutputSoundBuffer *sound_buffer) {
+                                   GameOffscreenBuffer *buffer) {
     assert(&input->controllers[0].terminator - &input->controllers[0].buttons[0] == array_count(input->controllers[0].buttons));
     assert(sizeof(GameState) <= memory->permanent_storage_size);
 
@@ -149,13 +156,19 @@ static void game_update_and_render(GameMemory *memory,
             } else if (controller->move_right.ended_down) {
                 game_state->x_offset += 1;
             }
+            if (controller->move_up.ended_down) {
+                game_state->tone_hz += 5;
+            } else if (controller->move_down.ended_down) {
+                game_state->tone_hz -= 5;
+            }
         }
 
         if (controller->action_down.ended_down) {
             game_state->y_offset += 1;
+        } else if (controller->action_up.ended_down) {
+            game_state->y_offset -= 1;
         }
     }
 
-    game_output_sound(sound_buffer, game_state->tone_hz);
     render_weird_gradient(buffer, game_state->x_offset, game_state->y_offset);
 }
