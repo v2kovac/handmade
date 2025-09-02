@@ -1,18 +1,5 @@
 // Windows Code - compile this file to get a windows app
-#include <stdint.h>
-#include <math.h>
-
-#if HANDMADE_INTERNAL
-struct DebugReadFileResult {
-    uint32_t contents_size;
-    void *contents;
-};
-static DebugReadFileResult debug_platform_read_entire_file(char *filename);
-static void debug_platform_free_file_memory(void *memory);
-static bool debug_platform_write_entire_file(char *filename, uint32_t memory_size, void *memory);
-#endif
-
-#include "handmade.cpp"
+#include "handmade.h"
 
 #include <windows.h>
 #include <xinput.h>
@@ -270,7 +257,7 @@ static void process_keyboard_message(GameButtonState *new_state, bool is_down) {
     new_state->half_transition_count++;
 }
 
-static DebugReadFileResult debug_platform_read_entire_file(char *filename) {
+DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file) {
     DebugReadFileResult result = {};
 
     HANDLE file_handle = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL);
@@ -304,13 +291,13 @@ static DebugReadFileResult debug_platform_read_entire_file(char *filename) {
     return result;
 }
 
-static void debug_platform_free_file_memory(void *memory) {
+DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory) {
     if (memory) {
         VirtualFree(memory, NULL, MEM_RELEASE);
     }
 }
 
-static bool debug_platform_write_entire_file(char *filename, uint32_t memory_size, void *memory) {
+DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file) {
     bool result = false;
 
     HANDLE file_handle = CreateFile(filename, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
@@ -496,6 +483,38 @@ static void debug_sync_display(int marker_count,
     }
 }
 
+struct GameCode {
+    HMODULE game_code_dll;
+    game_update_and_render_func *update_and_render;
+    game_get_sound_samples_func *get_sound_samples;
+    bool is_valid;
+};
+static GameCode load_game_code() {
+    GameCode result = {};
+
+    CopyFile("handmade.dll", "handmade_temp.dll", FALSE);
+    result.game_code_dll = LoadLibrary("handmade_temp.dll");
+    if (result.game_code_dll) {
+        result.update_and_render = (game_update_and_render_func *)GetProcAddress(result.game_code_dll, "game_update_and_render");
+        result.get_sound_samples = (game_get_sound_samples_func *)GetProcAddress(result.game_code_dll, "game_get_sound_samples");
+        result.is_valid = result.update_and_render && result.get_sound_samples;
+    }
+    if (!result.is_valid) {
+        result.update_and_render = game_update_and_render_stub;
+        result.get_sound_samples = game_get_sound_samples_stub;
+    }
+    return result;
+}
+static void unload_game_code(GameCode *game_code) {
+    if (game_code->game_code_dll) {
+        FreeLibrary(game_code->game_code_dll);
+        game_code->game_code_dll = NULL;
+    }
+    game_code->is_valid = false;
+    game_code->update_and_render = game_update_and_render_stub;
+    game_code->get_sound_samples = game_get_sound_samples_stub;
+}
+
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
     LARGE_INTEGER perf_count_frequency_result;
@@ -558,6 +577,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     GameMemory game_memory = {};
     game_memory.permanent_storage_size = megabytes(64);
     game_memory.transient_storage_size = gigabytes(4);
+    game_memory.debug_platform_read_entire_file = debug_platform_read_entire_file;
+    game_memory.debug_platform_write_entire_file = debug_platform_write_entire_file;
+    game_memory.debug_platform_free_file_memory = debug_platform_free_file_memory;
     uint64_t total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
 
     game_memory.permanent_storage = VirtualAlloc(base_address, total_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
@@ -574,10 +596,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     float audio_latency_seconds = 0;
     bool sound_is_valid = false;
 
+    GameCode game = load_game_code();
+    int load_counter = 0;
+
     LARGE_INTEGER last_counter = get_wall_clock();
     LARGE_INTEGER flip_wall_clock = get_wall_clock();
     uint64_t last_cycle_count = __rdtsc();
     while (g_running) {
+        if (load_counter++ > 120) {
+            unload_game_code(&game);
+            game = load_game_code();
+            load_counter = 0;
+        }
         GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
         GameControllerInput *old_keyboard_controller = get_controller(old_input, 0);
         *new_keyboard_controller = {};
@@ -647,7 +677,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         game_offscreen_buffer.width = g_backbuffer.width;
         game_offscreen_buffer.height = g_backbuffer.height;
         game_offscreen_buffer.memory = g_backbuffer.memory;
-        game_update_and_render(&game_memory, new_input, &game_offscreen_buffer);
+        game.update_and_render(&game_memory, new_input, &game_offscreen_buffer);
 
         LARGE_INTEGER audio_wall_clock = get_wall_clock();
         float from_begin_to_audio_seconds = get_seconds_elapsed(flip_wall_clock, audio_wall_clock);
@@ -718,7 +748,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             sound_buffer.samples_per_second = sound_output.samples_per_second;
             sound_buffer.sample_count = bytes_to_write / sound_output.bytes_per_sample;
             sound_buffer.samples = samples;
-            game_get_sound_samples(&game_memory, &sound_buffer);
+            game.get_sound_samples(&game_memory, &sound_buffer);
 
 #if HANDMADE_INTERNAL
             DebugTimeMarker *marker = &debug_time_markers[debug_time_marker_index];
@@ -762,7 +792,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             }
             float testSleep = get_seconds_elapsed(last_counter, get_wall_clock());
             if (testSleep >= target_seconds_per_frame) {
-                assert(!"frame stuff replace with logging");
+                //TODO logging
             }
             while (seconds_elapsed_for_frame < target_seconds_per_frame) {
                 seconds_elapsed_for_frame = get_seconds_elapsed(last_counter, get_wall_clock());
