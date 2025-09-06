@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <malloc.h>
 
-
 struct OffscreenBuffer {
     BITMAPINFO info;
     void *memory;
@@ -485,36 +484,67 @@ static void debug_sync_display(int marker_count,
 
 struct GameCode {
     HMODULE game_code_dll;
+    FILETIME last_write_time = {0};
     game_update_and_render_func *update_and_render;
     game_get_sound_samples_func *get_sound_samples;
-    bool is_valid;
+    bool is_valid = false;
 };
-static GameCode load_game_code() {
-    GameCode result = {};
 
-    CopyFile("handmade.dll", "handmade_temp.dll", FALSE);
-    result.game_code_dll = LoadLibrary("handmade_temp.dll");
-    if (result.game_code_dll) {
-        result.update_and_render = (game_update_and_render_func *)GetProcAddress(result.game_code_dll, "game_update_and_render");
-        result.get_sound_samples = (game_get_sound_samples_func *)GetProcAddress(result.game_code_dll, "game_get_sound_samples");
-        result.is_valid = result.update_and_render && result.get_sound_samples;
+static FILETIME get_last_write_time(char *filename) {
+    WIN32_FILE_ATTRIBUTE_DATA file_info;
+    if (!GetFileAttributesEx(filename, GetFileExInfoStandard, &file_info)) {
+        assert("missing file");
     }
-    if (!result.is_valid) {
-        result.update_and_render = game_update_and_render_stub;
-        result.get_sound_samples = game_get_sound_samples_stub;
-    }
-    return result;
+    return file_info.ftLastWriteTime;
 }
+
 static void unload_game_code(GameCode *game_code) {
     if (game_code->game_code_dll) {
         FreeLibrary(game_code->game_code_dll);
         game_code->game_code_dll = NULL;
     }
     game_code->is_valid = false;
+    game_code->last_write_time = {0};
     game_code->update_and_render = game_update_and_render_stub;
     game_code->get_sound_samples = game_get_sound_samples_stub;
 }
 
+static void reload_game_code(GameCode *game) {
+    char *source_dll_name = "handmade.dll";
+    char *temp_dll_name = "handmade_temp.dll";
+
+    FILETIME current_write_time = get_last_write_time(source_dll_name);
+    LONG comparison = CompareFileTime(&current_write_time, &game->last_write_time);
+    if (game->is_valid && comparison == 0) {
+        return;
+    }
+
+    unload_game_code(game);
+    // windows in parallels fucking sucks, FreeLibrary doesn't immediately free
+    // is it better to led the platform loop keep going, or block? right now
+    // i'm deleting the dll in the build.bat to get around this
+
+    // if (!CopyFile(source_dll_name, temp_dll_name, FALSE)) {
+    //     return;
+    // }
+    // while(!CopyFile(source_dll_name, temp_dll_name, FALSE));
+    // char temp_dll_name[256];
+    // sprintf_s(temp_dll_name, "handmade_%x_temp.dll", GetTickCount());
+    CopyFile(source_dll_name, temp_dll_name, FALSE);
+
+    game->game_code_dll = LoadLibrary(temp_dll_name);
+    if (game->game_code_dll) {
+        game->update_and_render = (game_update_and_render_func *)GetProcAddress(game->game_code_dll, "game_update_and_render");
+        game->get_sound_samples = (game_get_sound_samples_func *)GetProcAddress(game->game_code_dll, "game_get_sound_samples");
+        game->last_write_time = current_write_time;
+        game->is_valid = game->update_and_render && game->get_sound_samples;
+    }
+    if (!game->is_valid) {
+        game->update_and_render = game_update_and_render_stub;
+        game->get_sound_samples = game_get_sound_samples_stub;
+        game->last_write_time = {0};
+    }
+}
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
     LARGE_INTEGER perf_count_frequency_result;
@@ -596,18 +626,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     float audio_latency_seconds = 0;
     bool sound_is_valid = false;
 
-    GameCode game = load_game_code();
+    GameCode game = {};
+    reload_game_code(&game);
     int load_counter = 0;
 
     LARGE_INTEGER last_counter = get_wall_clock();
     LARGE_INTEGER flip_wall_clock = get_wall_clock();
     uint64_t last_cycle_count = __rdtsc();
     while (g_running) {
-        if (load_counter++ > 120) {
-            unload_game_code(&game);
-            game = load_game_code();
-            load_counter = 0;
-        }
+        reload_game_code(&game);
+
         GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
         GameControllerInput *old_keyboard_controller = get_controller(old_input, 0);
         *new_keyboard_controller = {};
