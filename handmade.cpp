@@ -10,7 +10,11 @@ static void game_output_sound(GameState *game_state, GameOutputSoundBuffer *soun
 
     for (int sample_index = 0; sample_index < sound_buffer->sample_count; sample_index++) {
         float sine_value = sinf(game_state->t_sine);
+#if 0
         int16_t sample_value = (int16_t)(sine_value * tone_volume);
+#else
+        int16_t sample_value = 0;
+#endif
         *sample_out++ = sample_value;
         *sample_out++ = sample_value;
 
@@ -28,6 +32,23 @@ static void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int
             uint8_t blue = (uint8_t)(x + x_offset);
             uint8_t green = (uint8_t)(y + y_offset);
             *arr++ = ((green << 16) | blue);
+        }
+    }
+}
+
+static void render_player(GameOffscreenBuffer *buffer, int player_x, int player_y) {
+    uint8_t *end_of_buffer = (uint8_t *)buffer->memory + buffer->pitch * buffer->height;
+
+    uint32_t color = 0xFFFFFFFF;
+    int top = player_y;
+    int bottom = player_y + 10;
+    for (int x = player_x; x < player_x + 10; x++) {
+        uint8_t *pixel = (uint8_t *)buffer->memory + (x * buffer->bytes_per_pixel) + (top * buffer->pitch);
+        for (int y = top; y < bottom; y++) {
+            if (pixel >= buffer->memory && pixel < end_of_buffer) {
+                *(uint32_t *)pixel = color;
+            }
+            pixel += buffer->pitch;
         }
     }
 }
@@ -52,6 +73,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
         game_state->tone_hz = TONE_HZ_START;
         game_state->t_sine = 0.0f;
+        game_state->player_x = 100;
+        game_state->player_y = 100;
         memory->is_initialized = true;
     }
 
@@ -63,22 +86,30 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         } else {
             if (controller->move_left.ended_down) {
                 game_state->x_offset -= 1;
+                game_state->player_x -= 5;
             } else if (controller->move_right.ended_down) {
                 game_state->x_offset += 1;
+                game_state->player_x += 5;
             }
             if (controller->move_up.ended_down) {
-                game_state->tone_hz += 5;
+                game_state->player_y -= 5;
             } else if (controller->move_down.ended_down) {
-                game_state->tone_hz -= 5;
+                game_state->player_y += 5;
             }
         }
 
         if (controller->action_down.ended_down) {
             game_state->y_offset += 1;
+            game_state->t_jump = 2.0f;
         } else if (controller->action_up.ended_down) {
             game_state->y_offset -= 1;
         }
+        if (game_state->t_jump > 0) {
+            game_state->player_y += (int)(10.0f * sinf(PI32 * game_state->t_jump));
+        }
+        game_state->t_jump -= 0.033f;
     }
 
     render_weird_gradient(buffer, game_state->x_offset, game_state->y_offset);
+    render_player(buffer, game_state->player_x, game_state->player_y);
 }

@@ -33,6 +33,8 @@ struct GameOffscreenBuffer {
     void *memory;
     int width;
     int height;
+    int pitch;
+    int bytes_per_pixel;
 };
 
 struct GameOutputSoundBuffer {
@@ -100,6 +102,10 @@ struct GameState {
     int x_offset;
     int y_offset;
     float t_sine = 0.0f;
+
+    int player_x;
+    int player_y;
+    float t_jump;
 };
 
 
