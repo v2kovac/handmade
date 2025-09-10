@@ -10,7 +10,7 @@ static void game_output_sound(GameState *game_state, GameOutputSoundBuffer *soun
 
     for (int sample_index = 0; sample_index < sound_buffer->sample_count; sample_index++) {
         float sine_value = sinf(game_state->t_sine);
-#if 0
+#if 1
         int16_t sample_value = (int16_t)(sine_value * tone_volume);
 #else
         int16_t sample_value = 0;

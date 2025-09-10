@@ -37,6 +37,7 @@ struct DebugTimeMarker {
     DWORD flip_play_cursor;
     DWORD flip_write_cursor;
 };
+#define WIN32_STATE_FILENAME_COUNT MAX_PATH
 struct Win32State {
     uint64_t total_size;
     void *game_memory_block;
@@ -46,6 +47,9 @@ struct Win32State {
 
     HANDLE playback_handle;
     int input_playing_index;
+
+    char exe_filename[WIN32_STATE_FILENAME_COUNT];
+    char *one_past_last_exe_filename_slash;
 };
 
 static bool g_running;
@@ -153,7 +157,7 @@ static void resize_dib_section(OffscreenBuffer *buffer, int width, int height) {
 
 static void display_buffer_in_window(OffscreenBuffer *buffer, HDC device_context, int window_width, int window_height) {
     StretchDIBits(device_context,
-                  0, 0, window_width, window_height,
+                  0, 0, buffer->width, buffer->height,
                   0, 0, buffer->width, buffer->height,
                   buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
@@ -226,11 +230,13 @@ LRESULT main_window_callback(HWND window, UINT message, WPARAM w_param, LPARAM l
 
         case WM_ACTIVATEAPP:
         {
+#if 0
             if (w_param == TRUE) {
                 SetLayeredWindowAttributes(window, RGB(0, 0, 0), 255, LWA_ALPHA);
             } else {
                 SetLayeredWindowAttributes(window, RGB(0, 0, 0), 64, LWA_ALPHA);
             }
+#endif
         } break;
 
 
@@ -350,53 +356,85 @@ void WriteFileChunked(HANDLE hFile, const void *buffer, size_t totalSize) {
     }
 }
 
-static void begin_recording_input(Win32State *win32_state, int input_recording_index) {
-    win32_state->input_recording_index = input_recording_index;
-    char *filename = "foo.hmi";
-    win32_state->recording_handle = CreateFile(filename, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
+static int string_length(char *string) {
+    int count = 0;
+    while (*string++) {
+        ++count;
+    }
+    return count;
+}
+
+static void cat_strings(size_t source_a_count, char *source_a,
+                        size_t source_b_count, char *source_b,
+                        size_t dest_count, char *dest) {
+    for (int i = 0; i < source_a_count; ++i) {
+        *dest++ = *source_a++;
+    }
+    for (int i = 0; i < source_b_count; ++i) {
+        *dest++ = *source_b++;
+    }
+    *dest++ = 0;
+}
+
+static void build_exe_path_filename(Win32State *state, char *filename, int dest_count, char *dest) {
+    cat_strings(state->one_past_last_exe_filename_slash - state->exe_filename,
+                state->exe_filename, string_length(filename), filename,
+                dest_count, dest);
+}
+
+static void get_input_file_location(Win32State *state, int slot_index, int dest_count, char *dest) {
+    assert(slot_index == 1);
+    build_exe_path_filename(state, "loop_edit.hmi", dest_count, dest);
+}
+static void begin_recording_input(Win32State *state, int input_recording_index) {
+    state->input_recording_index = input_recording_index;
+    char filename[WIN32_STATE_FILENAME_COUNT];
+    get_input_file_location(state, input_recording_index, sizeof(filename), filename);
+    state->recording_handle = CreateFile(filename, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, NULL, NULL);
 
     // not working? fixed base address? write file not done?
     // looks like shared folders cant handle 1 gig, but they can handle 500 mb
     // so chunk the write
-    DWORD bytes_to_write = (DWORD)win32_state->total_size;
-    assert(win32_state->total_size == bytes_to_write);
-    WriteFileChunked(win32_state->recording_handle, win32_state->game_memory_block, win32_state->total_size);
+    DWORD bytes_to_write = (DWORD)state->total_size;
+    assert(state->total_size == bytes_to_write);
+    WriteFileChunked(state->recording_handle, state->game_memory_block, state->total_size);
 }
-static void end_recording_input(Win32State *win32_state) {
-    CloseHandle(win32_state->recording_handle);
-    win32_state->input_recording_index = 0;
+static void end_recording_input(Win32State *state) {
+    CloseHandle(state->recording_handle);
+    state->input_recording_index = 0;
 }
-static void begin_input_playback(Win32State *win32_state, int input_playing_index) {
-    win32_state->input_playing_index = input_playing_index;
-    char *filename = "foo.hmi";
-    win32_state->playback_handle = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL);
+static void begin_input_playback(Win32State *state, int input_playing_index) {
+    state->input_playing_index = input_playing_index;
+    char filename[WIN32_STATE_FILENAME_COUNT];
+    get_input_file_location(state, input_playing_index, sizeof(filename), filename);
+    state->playback_handle = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, NULL, NULL);
 
-    DWORD bytes_to_read = (DWORD)win32_state->total_size;
-    assert(win32_state->total_size == bytes_to_read);
+    DWORD bytes_to_read = (DWORD)state->total_size;
+    assert(state->total_size == bytes_to_read);
     DWORD bytes_read;
-    ReadFile(win32_state->playback_handle, win32_state->game_memory_block, bytes_to_read, &bytes_read, NULL);
+    ReadFile(state->playback_handle, state->game_memory_block, bytes_to_read, &bytes_read, NULL);
 }
-static void end_input_playback(Win32State *win32_state) {
-    CloseHandle(win32_state->playback_handle);
-    win32_state->input_playing_index = 0;
+static void end_input_playback(Win32State *state) {
+    CloseHandle(state->playback_handle);
+    state->input_playing_index = 0;
 }
-static void record_input(Win32State *win32_state, GameInput *new_input) {
+static void record_input(Win32State *state, GameInput *new_input) {
     DWORD bytes_written;
-    WriteFile(win32_state->recording_handle, new_input, sizeof(*new_input), &bytes_written, NULL);
+    WriteFile(state->recording_handle, new_input, sizeof(*new_input), &bytes_written, NULL);
 }
-static void playback_input(Win32State *win32_state, GameInput *new_input) {
+static void playback_input(Win32State *state, GameInput *new_input) {
     DWORD bytes_read;
-    if (ReadFile(win32_state->playback_handle, new_input, sizeof(*new_input), &bytes_read, NULL)) {
+    if (ReadFile(state->playback_handle, new_input, sizeof(*new_input), &bytes_read, NULL)) {
         if (bytes_read == 0) {
-            int playing_index = win32_state->input_playing_index;
-            end_input_playback(win32_state);
-            begin_input_playback(win32_state, playing_index);
-            ReadFile(win32_state->playback_handle, new_input, sizeof(*new_input), &bytes_read, NULL);
+            int playing_index = state->input_playing_index;
+            end_input_playback(state);
+            begin_input_playback(state, playing_index);
+            ReadFile(state->playback_handle, new_input, sizeof(*new_input), &bytes_read, NULL);
         }
     }
 }
 
-static void process_pending_messages(Win32State *win32_state, GameControllerInput *keyboard_controller) {
+static void process_pending_messages(Win32State *state, GameControllerInput *keyboard_controller) {
     MSG message;
     while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
         switch (message.message) {
@@ -446,14 +484,17 @@ static void process_pending_messages(Win32State *win32_state, GameControllerInpu
                     g_pause = !g_pause;
                 }
                 else if (vk_code == 'L' && is_down) {
-                    if (win32_state->input_recording_index == 0 && win32_state->input_playing_index == 0) {
-                        begin_recording_input(win32_state, 1);
-                    } else if (win32_state->input_recording_index == 0 && win32_state->input_playing_index > 0) {
-                        // TODO this doesn't work, input is contaminated and old input is held down
-                        end_input_playback(win32_state);
+                    if (state->input_recording_index == 0 && state->input_playing_index == 0) {
+                        begin_recording_input(state, 1);
+                    } else if (state->input_recording_index == 0 && state->input_playing_index > 0) {
+                        end_input_playback(state);
+                        // this only resets keyboard not gamepad, does gamepad need to be reset?
+                        for (int i = 0; i < array_count(keyboard_controller->buttons); i++) {
+                            keyboard_controller->buttons[i].ended_down = false;
+                        }
                     } else {
-                        end_recording_input(win32_state);
-                        begin_input_playback(win32_state, 1);
+                        end_recording_input(state);
+                        begin_input_playback(state, 1);
                     }
                 }
 #endif
@@ -593,14 +634,11 @@ static void unload_game_code(GameCode *game_code) {
     }
     game_code->is_valid = false;
     game_code->last_write_time = {0};
-    game_code->update_and_render = game_update_and_render_stub;
-    game_code->get_sound_samples = game_get_sound_samples_stub;
+    game_code->update_and_render = 0;
+    game_code->get_sound_samples = 0;
 }
 
-static void reload_game_code(GameCode *game) {
-    char *source_dll_name = "handmade.dll";
-    char *temp_dll_name = "handmade_temp.dll";
-
+static void reload_game_code(GameCode *game, char *source_dll_name, char *temp_dll_name) {
     FILETIME current_write_time = get_last_write_time(source_dll_name);
     LONG comparison = CompareFileTime(&current_write_time, &game->last_write_time);
     if (game->is_valid && comparison == 0) {
@@ -628,17 +666,36 @@ static void reload_game_code(GameCode *game) {
         game->is_valid = game->update_and_render && game->get_sound_samples;
     }
     if (!game->is_valid) {
-        game->update_and_render = game_update_and_render_stub;
-        game->get_sound_samples = game_get_sound_samples_stub;
+        game->update_and_render = 0;
+        game->get_sound_samples = 0;
         game->last_write_time = {0};
     }
 }
 
+static void get_exe_filename(Win32State *state) {
+    DWORD size_of_filename = GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
+    state->one_past_last_exe_filename_slash = state->exe_filename;
+    for (char *scan = state->exe_filename; *scan; ++scan) {
+        if (*scan == '\\') {
+            state->one_past_last_exe_filename_slash = scan + 1;
+        }
+    }
+}
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int show_code) {
+    Win32State win32_state = {};
+
     LARGE_INTEGER perf_count_frequency_result;
     QueryPerformanceFrequency(&perf_count_frequency_result);
     g_perf_count_frequency = perf_count_frequency_result.QuadPart;
+
+    get_exe_filename(&win32_state);
+    char source_game_code_dll_full_path[WIN32_STATE_FILENAME_COUNT];
+    build_exe_path_filename(&win32_state, "handmade.dll",
+                            sizeof(source_game_code_dll_full_path), source_game_code_dll_full_path);
+    char temp_game_code_dll_full_path[WIN32_STATE_FILENAME_COUNT];
+    build_exe_path_filename(&win32_state, "handmade_temp.dll",
+                            sizeof(temp_game_code_dll_full_path), temp_game_code_dll_full_path);
 
     UINT desired_scheduler_ms = 1;
     bool sleep_is_granular = timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR;
@@ -662,7 +719,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     ATOM register_result = RegisterClass(&window_class);
     if (register_result == 0) return 1;
     HWND window = CreateWindowEx(
-        WS_EX_TOPMOST|WS_EX_LAYERED,
+        0, //WS_EX_TOPMOST|WS_EX_LAYERED,
         window_class.lpszClassName,
         "HandmadeHero",
         WS_OVERLAPPEDWINDOW|WS_VISIBLE,
@@ -683,8 +740,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     init_dsound(window, sound_output.samples_per_second, sound_output.secondary_buffer_size);
     clear_sound_buffer(&sound_output);
     g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
-
-    Win32State win32_state = {};
 
     g_running = true;
     int16_t *samples = (int16_t *)VirtualAlloc(0, sound_output.secondary_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
@@ -718,19 +773,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     bool sound_is_valid = false;
 
     GameCode game = {};
-    reload_game_code(&game);
+    reload_game_code(&game, source_game_code_dll_full_path, temp_game_code_dll_full_path);
     int load_counter = 0;
 
     LARGE_INTEGER last_counter = get_wall_clock();
     LARGE_INTEGER flip_wall_clock = get_wall_clock();
     uint64_t last_cycle_count = __rdtsc();
     while (g_running) {
-        reload_game_code(&game);
+        reload_game_code(&game, source_game_code_dll_full_path, temp_game_code_dll_full_path);
 
         GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
         GameControllerInput *old_keyboard_controller = get_controller(old_input, 0);
         *new_keyboard_controller = {};
-        new_keyboard_controller->is_connected = true;
         for (int i = 0; i < array_count(new_keyboard_controller->buttons); i++) {
             new_keyboard_controller->buttons[i].ended_down = old_keyboard_controller->buttons[i].ended_down;
         }
@@ -753,6 +807,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
                 // controller is plugged in
                 XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
                 new_controller->is_connected = true;
+                new_controller->is_analog = old_controller->is_analog;
 
                 new_controller->stick_avg_x = process_xinput_stick_value(pad->sThumbLX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
                 new_controller->stick_avg_y = process_xinput_stick_value(pad->sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
@@ -805,7 +860,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         if (win32_state.input_playing_index) {
             playback_input(&win32_state, new_input);
         }
-        game.update_and_render(&game_memory, new_input, &go_buffer);
+        if (game.update_and_render) {
+            game.update_and_render(&game_memory, new_input, &go_buffer);
+        }
 
         LARGE_INTEGER audio_wall_clock = get_wall_clock();
         float from_begin_to_audio_seconds = get_seconds_elapsed(flip_wall_clock, audio_wall_clock);
@@ -846,7 +903,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             float seconds_left_until_flip = target_seconds_per_frame - from_begin_to_audio_seconds;
             DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip / target_seconds_per_frame) * (float)expected_sound_bytes_per_frame);
 
-            DWORD expected_frame_boundary_byte = play_cursor + expected_sound_bytes_per_frame;
+            DWORD expected_frame_boundary_byte = play_cursor + expected_bytes_until_flip;
 
             DWORD safe_write_cursor = write_cursor;
             if (safe_write_cursor < play_cursor) {
@@ -876,7 +933,9 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             sound_buffer.samples_per_second = sound_output.samples_per_second;
             sound_buffer.sample_count = bytes_to_write / sound_output.bytes_per_sample;
             sound_buffer.samples = samples;
-            game.get_sound_samples(&game_memory, &sound_buffer);
+            if (game.get_sound_samples) {
+                game.get_sound_samples(&game_memory, &sound_buffer);
+            }
 
 #if HANDMADE_INTERNAL
             DebugTimeMarker *marker = &debug_time_markers[debug_time_marker_index];
