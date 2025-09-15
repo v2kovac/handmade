@@ -11,19 +11,23 @@
 #define gigabytes(value) (megabytes(value) * 1024LL)
 #define terabytes(value) (gigabytes(value) * 1024LL)
 
+struct ThreadContext {
+    int placeholder;
+};
+
 #if HANDMADE_INTERNAL
 
 struct DebugReadFileResult {
     uint32_t contents_size;
     void *contents;
 };
-#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) DebugReadFileResult name(char *filename)
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) DebugReadFileResult name(ThreadContext *thread, char *filename)
 typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file_func);
 
-#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool name(char *filename, uint32_t memory_size, void *memory)
+#define DEBUG_PLATFORM_WRITE_ENTIRE_FILE(name) bool name(ThreadContext *thread, char *filename, uint32_t memory_size, void *memory)
 typedef DEBUG_PLATFORM_WRITE_ENTIRE_FILE(debug_platform_write_entire_file_func);
 
-#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(void *memory)
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(ThreadContext *thread, void *memory)
 typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory_func);
 
 #endif
@@ -80,6 +84,8 @@ struct GameControllerInput {
 };
 
 struct GameInput {
+    GameButtonState mouse_buttons[5];
+    int32_t mouse_x, mouse_y, mouse_z;
     GameControllerInput controllers[5];
 };
 
@@ -110,10 +116,10 @@ struct GameState {
 
 
 // game interface
-#define GAME_UPDATE_AND_RENDER(name) void name(GameMemory *memory, GameInput *input, GameOffscreenBuffer *buffer)
+#define GAME_UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory *memory, GameInput *input, GameOffscreenBuffer *buffer)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render_func);
 
-#define GAME_GET_SOUND_SAMPLES(name) void name(GameMemory *memory, GameOutputSoundBuffer *sound_buffer)
+#define GAME_GET_SOUND_SAMPLES(name) void name(ThreadContext *thread, GameMemory *memory, GameOutputSoundBuffer *sound_buffer)
 typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples_func);
 
 

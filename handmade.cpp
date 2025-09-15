@@ -65,10 +65,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     GameState *game_state = (GameState *)memory->permanent_storage;
     if (!memory->is_initialized) {
         char *filename = __FILE__;
-        DebugReadFileResult file = memory->debug_platform_read_entire_file(filename);
+        DebugReadFileResult file = memory->debug_platform_read_entire_file(thread, filename);
         if (file.contents) {
-            memory->debug_platform_write_entire_file("test.out", file.contents_size, file.contents);
-            memory->debug_platform_free_file_memory(file.contents);
+            memory->debug_platform_write_entire_file(thread, "test.out", file.contents_size, file.contents);
+            memory->debug_platform_free_file_memory(thread, file.contents);
         }
 
         game_state->tone_hz = TONE_HZ_START;
@@ -112,4 +112,12 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     render_weird_gradient(buffer, game_state->x_offset, game_state->y_offset);
     render_player(buffer, game_state->player_x, game_state->player_y);
+
+    // test mouse
+    for (int i = 0; i < array_count(input->mouse_buttons); ++i) {
+        if (input->mouse_buttons[i].ended_down) {
+            render_player(buffer, 10 + 20 * i, 10);
+        }
+    }
+    render_player(buffer, input->mouse_x, input->mouse_y);
 }
