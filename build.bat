@@ -6,7 +6,8 @@ pushd build
 REM 4201 means something about unamed strucs
 REM 4100 is unused func parameters
 REM 4189 is unused local variable
-set warning_flags=-WX -W4 -wd4201 -wd4100 -wd4189
+REM 4505 unreferenced function
+set warning_flags=-WX -W4 -wd4201 -wd4100 -wd4189 -wd4505
 
 set env_variables=-DHANDMADE_INTERNAL=1 -DHANDMADE_SLOW=1 -DHANDMADE_WIN32=1
 

@@ -86,6 +86,7 @@ struct GameControllerInput {
 struct GameInput {
     GameButtonState mouse_buttons[5];
     int32_t mouse_x, mouse_y, mouse_z;
+    float seconds_to_advance_over_update;
     GameControllerInput controllers[5];
 };
 
@@ -104,14 +105,6 @@ struct GameMemory {
 };
 
 struct GameState {
-    int tone_hz;
-    int x_offset;
-    int y_offset;
-    float t_sine = 0.0f;
-
-    int player_x;
-    int player_y;
-    float t_jump;
 };
 
 

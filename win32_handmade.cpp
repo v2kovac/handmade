@@ -717,7 +717,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
 
     WNDCLASS window_class = {};
 
-    resize_dib_section(&g_backbuffer, 1280, 720);
+    resize_dib_section(&g_backbuffer, 960, 540);
 
     window_class.style = CS_HREDRAW|CS_VREDRAW;
     window_class.lpfnWndProc = main_window_callback;
@@ -789,6 +789,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     GameInput inputs[2] = {};
     GameInput *new_input = &inputs[0];
     GameInput *old_input = &inputs[1];
+    new_input->seconds_to_advance_over_update = target_seconds_per_frame;
 
     int debug_time_marker_index = 0;
     DebugTimeMarker debug_time_markers[30] = {};
