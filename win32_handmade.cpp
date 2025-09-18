@@ -21,11 +21,11 @@ struct WindowDimension {
 };
 struct SoundOutput {
     int samples_per_second = 48000;
-    uint32_t running_sample_index = 0;
-    int bytes_per_sample = sizeof(int16_t) * 2;
+    u32 running_sample_index = 0;
+    int bytes_per_sample = sizeof(s16) * 2;
     DWORD secondary_buffer_size = (DWORD)(samples_per_second * bytes_per_sample);
     DWORD safety_bytes;
-    float t_sine = 0;
+    f32 t_sine = 0;
 };
 struct DebugTimeMarker {
     DWORD output_play_cursor;
@@ -42,7 +42,7 @@ struct Win32ReplayBuffer {
     void *memory_block;
 };
 struct Win32State {
-    uint64_t total_size;
+    u64 total_size;
     void *game_memory_block;
     Win32ReplayBuffer replay_buffers[4];
 
@@ -60,7 +60,7 @@ static bool g_running;
 static bool g_pause = false;
 static OffscreenBuffer g_backbuffer;
 static LPDIRECTSOUNDBUFFER g_secondary_buffer;
-static int64_t g_perf_count_frequency;
+static s64 g_perf_count_frequency;
 
 // XInputGetState
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pState)
@@ -91,7 +91,7 @@ static void win32_load_xinput() {
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-static void init_dsound(HWND window, int32_t samples_per_second, int32_t buffer_size) {
+static void init_dsound(HWND window, s32 samples_per_second, s32 buffer_size) {
     HMODULE dsound_library = LoadLibrary("dsound.dll");
     if (!dsound_library) return;
 
@@ -173,11 +173,11 @@ static void clear_sound_buffer(SoundOutput *sound_output) {
     DWORD region2_size;
     HRESULT error = g_secondary_buffer->Lock(0, sound_output->secondary_buffer_size, &region1, &region1_size, &region2, &region2_size, 0);
     if (SUCCEEDED(error)) {
-        uint8_t *dest_sample = (uint8_t *)region1;
+        u8 *dest_sample = (u8 *)region1;
         for (DWORD byte_index = 0; byte_index < region1_size; byte_index++) {
             *dest_sample++ = 0;
         }
-        dest_sample = (uint8_t *)region2;
+        dest_sample = (u8 *)region2;
         for (DWORD byte_index = 0; byte_index < region2_size; byte_index++) {
             *dest_sample++ = 0;
         }
@@ -193,8 +193,8 @@ static void fill_sound_buffer(SoundOutput *sound_output, DWORD byte_to_lock, DWO
     DWORD region2_size;
     HRESULT error = g_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0);
     if (SUCCEEDED(error)) {
-        int16_t *dest_sample = (int16_t *)region1;
-        int16_t *source_sample = source_buffer->samples;
+        s16 *dest_sample = (s16 *)region1;
+        s16 *source_sample = source_buffer->samples;
         DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
         for (DWORD sample_index = 0; sample_index < region1_sample_count; sample_index++) {
             *dest_sample++ = *source_sample++;
@@ -203,7 +203,7 @@ static void fill_sound_buffer(SoundOutput *sound_output, DWORD byte_to_lock, DWO
             sound_output->running_sample_index++;
         }
 
-        dest_sample = (int16_t *)region2;
+        dest_sample = (s16 *)region2;
         DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
         for (DWORD sample_index = 0; sample_index < region2_sample_count; sample_index++) {
             *dest_sample++ = *source_sample++;
@@ -458,7 +458,7 @@ static void process_pending_messages(Win32State *state, GameControllerInput *key
             case WM_KEYDOWN:
             case WM_KEYUP:
             {
-                uint32_t vk_code = (uint32_t)message.wParam;
+                u32 vk_code = (u32)message.wParam;
                 bool was_down = (message.lParam & (1 << 30)) != 0;
                 bool is_down = (message.lParam & (1 << 31)) == 0;
                 if (was_down == is_down) break;
@@ -519,12 +519,12 @@ static void process_pending_messages(Win32State *state, GameControllerInput *key
     }
 }
 
-static float process_xinput_stick_value(SHORT value, SHORT deadzone_threshold) {
-    float result = 0;
+static f32 process_xinput_stick_value(SHORT value, SHORT deadzone_threshold) {
+    f32 result = 0;
     if (value < -deadzone_threshold) {
-        result = (float)(value + deadzone_threshold) / (32768.0f - deadzone_threshold);
+        result = (f32)(value + deadzone_threshold) / (32768.0f - deadzone_threshold);
     } else if (value > deadzone_threshold) {
-        result = float(value - deadzone_threshold) / (32767.0f - deadzone_threshold);
+        result = f32(value - deadzone_threshold) / (32767.0f - deadzone_threshold);
     }
     return result;
 }
@@ -535,13 +535,13 @@ static inline LARGE_INTEGER get_wall_clock() {
     return result;
 }
 
-static inline float get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
-    float result = (float)(end.QuadPart - start.QuadPart) / (float)g_perf_count_frequency;
+static inline f32 get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
+    f32 result = (f32)(end.QuadPart - start.QuadPart) / (f32)g_perf_count_frequency;
     return result;
 }
 
 #if 0
-static void debug_draw_vertical(int x, int top, int bottom, uint32_t color) {
+static void debug_draw_vertical(int x, int top, int bottom, u32 color) {
     if (top <= 0) {
         top = 0;
     }
@@ -549,24 +549,24 @@ static void debug_draw_vertical(int x, int top, int bottom, uint32_t color) {
         bottom = g_backbuffer.height - 1;
     }
     if (x >= 0 && x < g_backbuffer.width) {
-        uint8_t *pixel = (uint8_t *)g_backbuffer.memory +
+        u8 *pixel = (u8 *)g_backbuffer.memory +
                          x * g_backbuffer.bytes_per_pixel +
                          top * g_backbuffer.pitch;
         for (int y = top; y < bottom; y++) {
-            *(uint32_t *)pixel = color;
+            *(u32 *)pixel = color;
             pixel += g_backbuffer.pitch;
         }
     }
 }
 
 static inline void draw_sound_buffer_marker(SoundOutput *sound_output,
-                                            float c,
+                                            f32 c,
                                             int pad_x,
                                             int top,
                                             int bottom,
                                             DWORD value,
-                                            uint32_t color) {
-    int x = pad_x + (int)(c * (float)value);
+                                            u32 color) {
+    int x = pad_x + (int)(c * (f32)value);
     debug_draw_vertical(x, top, bottom, color);
 }
 
@@ -574,12 +574,12 @@ static void debug_sync_display(int marker_count,
                                DebugTimeMarker *markers,
                                int current_marker_index,
                                SoundOutput *sound_output,
-                               float tartget_seconds_per_frame)
+                               f32 tartget_seconds_per_frame)
 {
     int pad_x = 16;
     int pad_y = 16;
     int line_height = 64;
-    float c = (float)(g_backbuffer.width - 2 * pad_x) / (float)sound_output->secondary_buffer_size;
+    f32 c = (f32)(g_backbuffer.width - 2 * pad_x) / (f32)sound_output->secondary_buffer_size;
     for (int i = 0; i < marker_count; i++) {
         DebugTimeMarker *this_marker = &markers[i];
         assert(this_marker->output_play_cursor < sound_output->secondary_buffer_size);
@@ -750,18 +750,18 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         monitor_refresh_hz = win32_refresh_rate;
     }
     // i'm getting inconsistent mohitor_refresh_hz so i'm just hardcoding this for now
-    float game_update_hz = 30.0f; // monitor_refresh_hz / 4.0f;
-    float target_seconds_per_frame = 1.0f / (float)game_update_hz;
+    f32 game_update_hz = 30.0f; // monitor_refresh_hz / 4.0f;
+    f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
     ReleaseDC(window, refresh_dc);
 
     SoundOutput sound_output = {};
-    sound_output.safety_bytes = (int)((((float)sound_output.samples_per_second * (float)sound_output.bytes_per_sample) / game_update_hz) / 3.0f);
+    sound_output.safety_bytes = (int)((((f32)sound_output.samples_per_second * (f32)sound_output.bytes_per_sample) / game_update_hz) / 3.0f);
     init_dsound(window, sound_output.samples_per_second, sound_output.secondary_buffer_size);
     clear_sound_buffer(&sound_output);
     g_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
     g_running = true;
-    int16_t *samples = (int16_t *)VirtualAlloc(0, sound_output.secondary_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+    s16 *samples = (s16 *)VirtualAlloc(0, sound_output.secondary_buffer_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
 #if HANDMADE_INTERNAL
     LPVOID base_address = (LPVOID)terabytes(2);
@@ -778,7 +778,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     win32_state.total_size = game_memory.permanent_storage_size + game_memory.transient_storage_size;
     win32_state.game_memory_block = VirtualAlloc(base_address, win32_state.total_size, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
     game_memory.permanent_storage = win32_state.game_memory_block;
-    game_memory.transient_storage = (uint8_t *)game_memory.permanent_storage + game_memory.permanent_storage_size;
+    game_memory.transient_storage = (u8 *)game_memory.permanent_storage + game_memory.permanent_storage_size;
 
     // skipping this since the replay_buffer memcpy is slow AF Ep 25
     // for (int i = 0; i < array_count(win32_state.replay_buffers); ++i) {
@@ -789,13 +789,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     GameInput inputs[2] = {};
     GameInput *new_input = &inputs[0];
     GameInput *old_input = &inputs[1];
-    new_input->seconds_to_advance_over_update = target_seconds_per_frame;
 
     int debug_time_marker_index = 0;
     DebugTimeMarker debug_time_markers[30] = {};
 
     DWORD audio_latency_bytes = 0;
-    float audio_latency_seconds = 0;
+    f32 audio_latency_seconds = 0;
     bool sound_is_valid = false;
 
     GameCode game = {};
@@ -804,8 +803,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
 
     LARGE_INTEGER last_counter = get_wall_clock();
     LARGE_INTEGER flip_wall_clock = get_wall_clock();
-    uint64_t last_cycle_count = __rdtsc();
+    u64 last_cycle_count = __rdtsc();
     while (g_running) {
+        new_input->dt_for_frame = target_seconds_per_frame;
+
         reload_game_code(&game, source_game_code_dll_full_path, temp_game_code_dll_full_path);
 
         GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
@@ -868,7 +869,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
                 } 
 
 
-                float threshold = 0.5f;
+                f32 threshold = 0.5f;
                 process_xinput_button((new_controller->stick_avg_x < -threshold) ? 1 : 0, 1, &old_controller->move_left, &new_controller->move_left);
                 process_xinput_button((new_controller->stick_avg_x > threshold) ? 1 : 0, 1, &old_controller->move_right, &new_controller->move_right);
                 process_xinput_button((new_controller->stick_avg_y < -threshold) ? 1 : 0, 1, &old_controller->move_down, &new_controller->move_down);
@@ -905,7 +906,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         }
 
         LARGE_INTEGER audio_wall_clock = get_wall_clock();
-        float from_begin_to_audio_seconds = get_seconds_elapsed(flip_wall_clock, audio_wall_clock);
+        f32 from_begin_to_audio_seconds = get_seconds_elapsed(flip_wall_clock, audio_wall_clock);
 
         /* NOTE:
 
@@ -938,10 +939,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
 
             DWORD byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.secondary_buffer_size;
 
-            DWORD expected_sound_bytes_per_frame = (int)((float)(sound_output.samples_per_second * sound_output.bytes_per_sample) / game_update_hz);
+            DWORD expected_sound_bytes_per_frame = (int)((f32)(sound_output.samples_per_second * sound_output.bytes_per_sample) / game_update_hz);
 
-            float seconds_left_until_flip = target_seconds_per_frame - from_begin_to_audio_seconds;
-            DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip / target_seconds_per_frame) * (float)expected_sound_bytes_per_frame);
+            f32 seconds_left_until_flip = target_seconds_per_frame - from_begin_to_audio_seconds;
+            DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip / target_seconds_per_frame) * (f32)expected_sound_bytes_per_frame);
 
             DWORD expected_frame_boundary_byte = play_cursor + expected_bytes_until_flip;
 
@@ -990,7 +991,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             } else {
                 audio_latency_bytes = write_cursor + sound_output.secondary_buffer_size - play_cursor;
             }
-            audio_latency_seconds = ((float)audio_latency_bytes / (float)sound_output.bytes_per_sample) / (float)sound_output.samples_per_second;
+            audio_latency_seconds = ((f32)audio_latency_bytes / (f32)sound_output.bytes_per_sample) / (f32)sound_output.samples_per_second;
 
 #if 0
             char text_buffer[256];
@@ -1008,8 +1009,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         }
 
         LARGE_INTEGER work_counter = get_wall_clock();
-        float work_seconds_elapsed = get_seconds_elapsed(last_counter, work_counter);
-        float seconds_elapsed_for_frame = work_seconds_elapsed;
+        f32 work_seconds_elapsed = get_seconds_elapsed(last_counter, work_counter);
+        f32 seconds_elapsed_for_frame = work_seconds_elapsed;
 
         if (seconds_elapsed_for_frame < target_seconds_per_frame) {
             if (sleep_is_granular) {
@@ -1018,7 +1019,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
                     Sleep(sleep_ms - 5);
                 }
             }
-            float testSleep = get_seconds_elapsed(last_counter, get_wall_clock());
+            f32 testSleep = get_seconds_elapsed(last_counter, get_wall_clock());
             if (testSleep >= target_seconds_per_frame) {
                 //TODO logging
             }
@@ -1031,7 +1032,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         }
 
         LARGE_INTEGER end_counter = get_wall_clock();
-        float ms_per_frame = 1000.0f * get_seconds_elapsed(last_counter, end_counter);
+        f32 ms_per_frame = 1000.0f * get_seconds_elapsed(last_counter, end_counter);
         last_counter = end_counter;
 
         WindowDimension dim = get_window_dimension(window);
@@ -1063,12 +1064,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         old_input = temp;
 
 #if 0
-        uint64_t end_cycle_count = __rdtsc();
-        uint64_t cycles_elapsed = end_cycle_count - last_cycle_count;
+        u64 end_cycle_count = __rdtsc();
+        u64 cycles_elapsed = end_cycle_count - last_cycle_count;
         last_cycle_count = end_cycle_count;
 
-        double fps = 0.0f;
-        double mcpf = (double)cycles_elapsed / (1000.0f * 1000.0f);
+        f64 fps = 0.0f;
+        f64 mcpf = (f64)cycles_elapsed / (1000.0f * 1000.0f);
 
         char buffer[256];
         sprintf_s(buffer, "%.02fms/f, %.02ff/s, %.02fmc/f\n", ms_per_frame, fps, mcpf);
