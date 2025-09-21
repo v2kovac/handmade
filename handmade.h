@@ -2,7 +2,6 @@
 #define HANDMADE_H
 
 #include <stdint.h>
-#include <math.h>
 
 typedef uint8_t u8;
 typedef uint16_t u16;
