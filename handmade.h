@@ -114,7 +114,47 @@ struct GameMemory {
     debug_platform_write_entire_file_func *debug_platform_write_entire_file;
 };
 
+struct CanonicalPosition {
+    s32 tile_map_x;
+    s32 tile_map_y;
+
+    s32 tile_x;
+    s32 tile_y;
+
+    // this is relative to the tile
+    f32 tile_rel_x;
+    f32 tile_rel_y;
+};
+struct RawPosition {
+    s32 tile_map_x;
+    s32 tile_map_y;
+
+    // this is relative to the tile map
+    f32 x;
+    f32 y;
+};
+struct TileMap {
+    u32 *tiles;
+};
+
+struct World {
+    s32 count_x;
+    s32 count_y;
+
+    f32 upper_left_x;
+    f32 upper_left_y;
+    f32 tile_width;
+    f32 tile_height;
+
+    s32 tile_map_count_x;
+    s32 tile_map_count_y;
+
+    TileMap *tile_maps;
+};
+
 struct GameState {
+    u32 player_tile_map_x;
+    u32 player_tile_map_y;
     f32 player_x;
     f32 player_y;
 };
