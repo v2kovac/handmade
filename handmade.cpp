@@ -97,48 +97,36 @@ inline static bool is_tile_map_point_empty(World *world, TileMap *tile_map, s32 
     return empty;
 }
 
-inline static CanonicalPosition get_canonical_position(World *world, RawPosition pos) {
-    CanonicalPosition result;
-    result.tile_map_x = pos.tile_map_x;
-    result.tile_map_y = pos.tile_map_y;
+inline static void recanonicalize_coord(World *world, s32 tile_count, s32 *tile_map, s32 *tile, f32 *tile_rel) {
+    s32 offset = floor_f32_to_s32(*tile_rel / world->tile_side_in_meters);
+    *tile += offset;
+    *tile_rel -= (offset * world->tile_side_in_meters);
 
-    f32 x = pos.x - world->upper_left_x;
-    f32 y = pos.y - world->upper_left_y;
+    assert(*tile_rel >= 0)
+    assert(*tile_rel < world->tile_side_in_meters);
 
-    result.tile_x = floor_f32_to_s32(x / world->tile_side_in_pixels);
-    result.tile_y = floor_f32_to_s32(y / world->tile_side_in_pixels);
-
-    // this looks wrong to me, dont you have to figure out the actual tile_x/y?
-    result.tile_rel_x = x - (result.tile_x * world->tile_side_in_pixels);
-    result.tile_rel_y = y - (result.tile_y * world->tile_side_in_pixels);
-
-    assert(result.tile_rel_x >= 0 && result.tile_rel_x < world->tile_side_in_pixels);
-    assert(result.tile_rel_y >= 0 && result.tile_rel_y < world->tile_side_in_pixels);
-
-    if (result.tile_x < 0) {
-        result.tile_x += world->count_x;
-        --result.tile_map_x;
+    if (*tile < 0) {
+        *tile = *tile + tile_count;
+        --(*tile_map);
     }
-    if (result.tile_y < 0) {
-        result.tile_y += world->count_y;
-        --result.tile_map_y;
+    if (*tile >= tile_count) {
+        *tile = *tile - tile_count;
+        ++(*tile_map);
     }
-    if (result.tile_x >= world->count_x) {
-        result.tile_x -= world->count_x;
-        ++result.tile_map_x;
-    }
-    if (result.tile_y >= world->count_y) {
-        result.tile_y -= world->count_y;
-        ++result.tile_map_y;
-    }
+}
+
+inline static CanonicalPosition recanonicalize_position(World *world, CanonicalPosition pos) {
+    CanonicalPosition result = pos;
+
+    recanonicalize_coord(world, world->count_x, &result.tile_map_x, &result.tile_x, &result.tile_rel_x);
+    recanonicalize_coord(world, world->count_y, &result.tile_map_y, &result.tile_y, &result.tile_rel_y);
 
     return result;
 }
 
-static bool is_world_point_empty(World *world, RawPosition test_pos) {
+static bool is_world_point_empty(World *world, CanonicalPosition can_pos) {
     bool empty = false;
 
-    CanonicalPosition can_pos = get_canonical_position(world, test_pos);
     TileMap *tile_map = get_tile_map(world, can_pos.tile_map_x, can_pos.tile_map_y);
     empty = is_tile_map_point_empty(world, tile_map, can_pos.tile_x, can_pos.tile_y);
 
@@ -210,29 +198,34 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     World world;
     world.tile_map_count_x = 2;
     world.tile_map_count_y = 2;
-    world.tile_maps = (TileMap *)tile_maps;
-
     world.count_x = TILE_MAP_COUNT_X;
     world.count_y = TILE_MAP_COUNT_Y;
+
     world.tile_side_in_meters = 1.4f;
     world.tile_side_in_pixels = 60;
+    world.meters_to_pixels = (f32)world.tile_side_in_pixels / world.tile_side_in_meters;
+
     world.upper_left_x = -((f32)world.tile_side_in_pixels / 2);
     world.upper_left_y = 0;
 
-    f32 player_width = 0.75f * world.tile_side_in_pixels;
-    f32 player_height = (f32)world.tile_side_in_pixels;
+    f32 player_height = 1.4f;
+    f32 player_width = 0.75f * player_height;
 
+    world.tile_maps = (TileMap *)tile_maps;
 
     GameState *game_state = (GameState *)memory->permanent_storage;
     if (!memory->is_initialized) {
+        game_state->player_p.tile_map_x = 0;
+        game_state->player_p.tile_map_y = 0;
+        game_state->player_p.tile_x = 3;
+        game_state->player_p.tile_y = 3;
+        game_state->player_p.tile_rel_x = 5.0f;
+        game_state->player_p.tile_rel_y = 5.0f;
+
         memory->is_initialized = true;
-        game_state->player_x = 150.0;
-        game_state->player_y = 150.0;
-        game_state->player_tile_map_x = 0;
-        game_state->player_tile_map_y = 0;
     }
 
-    TileMap *tile_map = get_tile_map(&world, game_state->player_tile_map_x, game_state->player_tile_map_y);
+    TileMap *tile_map = get_tile_map(&world, game_state->player_p.tile_map_x, game_state->player_p.tile_map_y);
     assert(tile_map);
 
     for (int i = 0; i < array_count(input->controllers); i++) {
@@ -253,31 +246,27 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (controller->move_right.ended_down) {
                 d_player_x = 1.0f;
             }
-            d_player_x *= 64.0f;
-            d_player_y *= 64.0f;
+            d_player_x *= 2.0f;
+            d_player_y *= 2.0f;
 
-            f32 new_player_x = game_state->player_x + input->dt_for_frame * d_player_x;
-            f32 new_player_y = game_state->player_y + input->dt_for_frame * d_player_y;
+            CanonicalPosition new_player_p = game_state->player_p;
+            new_player_p.tile_rel_x += input->dt_for_frame * d_player_x;
+            new_player_p.tile_rel_y += input->dt_for_frame * d_player_y;
+            new_player_p = recanonicalize_position(&world, new_player_p);
 
-            RawPosition player_pos = {};
-            player_pos.tile_map_x = game_state->player_tile_map_x;
-            player_pos.tile_map_y = game_state->player_tile_map_y;
-            player_pos.x = new_player_x;
-            player_pos.y = new_player_y;
-            RawPosition player_left = player_pos;
-            player_left.x -= 0.5f * player_width;
-            RawPosition player_right = player_pos;
-            player_right.x += 0.5f * player_width;
+            CanonicalPosition new_player_p_left = new_player_p;
+            new_player_p_left.tile_rel_x -= 0.5f * player_width;
+            new_player_p_left = recanonicalize_position(&world, new_player_p_left);
 
-            if (is_world_point_empty(&world, player_pos) &&
-                is_world_point_empty(&world, player_left) &&
-                is_world_point_empty(&world, player_right))
+            CanonicalPosition new_player_p_right = new_player_p;
+            new_player_p_right.tile_rel_x += 0.5f * player_width;
+            new_player_p_right = recanonicalize_position(&world, new_player_p_right);
+
+            if (is_world_point_empty(&world, new_player_p) &&
+                is_world_point_empty(&world, new_player_p_left) &&
+                is_world_point_empty(&world, new_player_p_right))
             {
-                CanonicalPosition can_pos = get_canonical_position(&world, player_pos);
-                game_state->player_tile_map_x = can_pos.tile_map_x;
-                game_state->player_tile_map_y = can_pos.tile_map_y;
-                game_state->player_x = world.upper_left_x + world.tile_side_in_pixels * can_pos.tile_x + can_pos.tile_rel_x;
-                game_state->player_y = world.upper_left_y + world.tile_side_in_pixels * can_pos.tile_y + can_pos.tile_rel_y;
+                game_state->player_p = new_player_p;
             }
         }
     }
@@ -292,6 +281,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (tile_id == 1) {
                 gray = 1.0f;
             }
+            if (row == game_state->player_p.tile_y && col == game_state->player_p.tile_x) {
+                gray = 0.0f;
+            }
             f32 min_x = world.upper_left_x + (f32)col * world.tile_side_in_pixels;
             f32 min_y = world.upper_left_y + (f32)row * world.tile_side_in_pixels;
             f32 max_x = min_x + world.tile_side_in_pixels;
@@ -302,11 +294,15 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 player_r = 1.0f;
     f32 player_g = 1.0f;
     f32 player_b = 0.0f;
-    f32 player_left = game_state->player_x - 0.5f * player_width;
-    f32 player_top = game_state->player_y - player_height;
+    f32 player_left = world.upper_left_x + (world.tile_side_in_pixels * game_state->player_p.tile_x) +
+                      (world.meters_to_pixels * game_state->player_p.tile_rel_x) -
+                      (0.5f * world.meters_to_pixels * player_width);
+    f32 player_top = world.upper_left_y + (world.tile_side_in_pixels * game_state->player_p.tile_y) +
+                     (world.meters_to_pixels * game_state->player_p.tile_rel_y) -
+                     (world.meters_to_pixels * player_height);
     draw_rectangle(buffer, player_left, player_top,
-                   player_left + player_width,
-                   player_top + player_height,
+                   player_left + (world.meters_to_pixels * player_width),
+                   player_top + (world.meters_to_pixels * player_height),
                    player_r, player_g, player_b);
 }
 

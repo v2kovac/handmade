@@ -140,6 +140,7 @@ struct TileMap {
 struct World {
     f32 tile_side_in_meters;
     s32 tile_side_in_pixels;
+    f32 meters_to_pixels;
 
     s32 count_x;
     s32 count_y;
@@ -154,10 +155,7 @@ struct World {
 };
 
 struct GameState {
-    u32 player_tile_map_x;
-    u32 player_tile_map_y;
-    f32 player_x;
-    f32 player_y;
+    CanonicalPosition player_p;
 };
 
 
