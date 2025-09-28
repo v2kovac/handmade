@@ -138,13 +138,14 @@ struct TileMap {
 };
 
 struct World {
+    f32 tile_side_in_meters;
+    s32 tile_side_in_pixels;
+
     s32 count_x;
     s32 count_y;
 
     f32 upper_left_x;
     f32 upper_left_y;
-    f32 tile_width;
-    f32 tile_height;
 
     s32 tile_map_count_x;
     s32 tile_map_count_y;

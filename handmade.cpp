@@ -1,5 +1,6 @@
 // Game Code - Platform Independent
 #include "handmade.h"
+#include "handmade_intrinsics.h"
 
 #define TONE_HZ_START 256
 
@@ -25,21 +26,6 @@ static void game_output_sound(GameState *game_state, GameOutputSoundBuffer *soun
         }
 #endif
     }
-}
-
-inline static s32 round_f32_to_s32(f32 float_32) {
-    return (s32)(float_32 + 0.5f);
-}
-inline static u32 round_f32_to_u32(f32 float_32) {
-    return (u32)(float_32 + 0.5f);
-}
-inline static s32 truncate_f32_to_s32(f32 float_32) {
-    return (s32)float_32;
-}
-// remove this
-#include "math.h"
-inline static s32 floor_f32_to_s32(f32 float_32) {
-    return (s32)floorf(float_32);
 }
 
 static void draw_rectangle(GameOffscreenBuffer *buffer,
@@ -119,15 +105,15 @@ inline static CanonicalPosition get_canonical_position(World *world, RawPosition
     f32 x = pos.x - world->upper_left_x;
     f32 y = pos.y - world->upper_left_y;
 
-    result.tile_x = floor_f32_to_s32(x / world->tile_width);
-    result.tile_y = floor_f32_to_s32(y / world->tile_height);
+    result.tile_x = floor_f32_to_s32(x / world->tile_side_in_pixels);
+    result.tile_y = floor_f32_to_s32(y / world->tile_side_in_pixels);
 
     // this looks wrong to me, dont you have to figure out the actual tile_x/y?
-    result.tile_rel_x = x - (result.tile_x * world->tile_width);
-    result.tile_rel_y = y - (result.tile_y * world->tile_height);
+    result.tile_rel_x = x - (result.tile_x * world->tile_side_in_pixels);
+    result.tile_rel_y = y - (result.tile_y * world->tile_side_in_pixels);
 
-    assert(result.tile_rel_x >= 0 && result.tile_rel_x < world->tile_width);
-    assert(result.tile_rel_y >= 0 && result.tile_rel_y < world->tile_height);
+    assert(result.tile_rel_x >= 0 && result.tile_rel_x < world->tile_side_in_pixels);
+    assert(result.tile_rel_y >= 0 && result.tile_rel_y < world->tile_side_in_pixels);
 
     if (result.tile_x < 0) {
         result.tile_x += world->count_x;
@@ -228,13 +214,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     world.count_x = TILE_MAP_COUNT_X;
     world.count_y = TILE_MAP_COUNT_Y;
-    world.upper_left_x = -30;
+    world.tile_side_in_meters = 1.4f;
+    world.tile_side_in_pixels = 60;
+    world.upper_left_x = -((f32)world.tile_side_in_pixels / 2);
     world.upper_left_y = 0;
-    world.tile_width = 60;
-    world.tile_height = 60;
 
-    f32 player_width = 0.75f * world.tile_width;
-    f32 player_height = world.tile_height;
+    f32 player_width = 0.75f * world.tile_side_in_pixels;
+    f32 player_height = (f32)world.tile_side_in_pixels;
 
 
     GameState *game_state = (GameState *)memory->permanent_storage;
@@ -290,8 +276,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 CanonicalPosition can_pos = get_canonical_position(&world, player_pos);
                 game_state->player_tile_map_x = can_pos.tile_map_x;
                 game_state->player_tile_map_y = can_pos.tile_map_y;
-                game_state->player_x = world.upper_left_x + world.tile_width * can_pos.tile_x + can_pos.tile_rel_x;
-                game_state->player_y = world.upper_left_y + world.tile_height * can_pos.tile_y + can_pos.tile_rel_y;
+                game_state->player_x = world.upper_left_x + world.tile_side_in_pixels * can_pos.tile_x + can_pos.tile_rel_x;
+                game_state->player_y = world.upper_left_y + world.tile_side_in_pixels * can_pos.tile_y + can_pos.tile_rel_y;
             }
         }
     }
@@ -306,10 +292,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (tile_id == 1) {
                 gray = 1.0f;
             }
-            f32 min_x = world.upper_left_x + (f32)col * world.tile_width;
-            f32 min_y = world.upper_left_y + (f32)row * world.tile_height;
-            f32 max_x = min_x + world.tile_width;
-            f32 max_y = min_y + world.tile_height;
+            f32 min_x = world.upper_left_x + (f32)col * world.tile_side_in_pixels;
+            f32 min_y = world.upper_left_y + (f32)row * world.tile_side_in_pixels;
+            f32 max_x = min_x + world.tile_side_in_pixels;
+            f32 max_y = min_y + world.tile_side_in_pixels;
             draw_rectangle(buffer, min_x, min_y, max_x, max_y, gray, gray, gray);
         }
     }
