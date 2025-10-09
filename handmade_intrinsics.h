@@ -4,11 +4,11 @@
 #include "math.h"
 
 inline static s32 round_f32_to_s32(f32 float_32) {
-    return (s32)(float_32 + 0.5f);
+    return (s32)roundf(float_32);
 }
 
 inline static u32 round_f32_to_u32(f32 float_32) {
-    return (u32)(float_32 + 0.5f);
+    return (u32)roundf(float_32);
 }
 
 inline static s32 truncate_f32_to_s32(f32 float_32) {

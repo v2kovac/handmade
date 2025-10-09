@@ -114,42 +114,22 @@ struct GameMemory {
     debug_platform_write_entire_file_func *debug_platform_write_entire_file;
 };
 
-struct TileChunkPosition {
-    u32 tile_chunk_x;
-    u32 tile_chunk_y;
+#include "handmade_tile.h"
 
-    u32 rel_tile_x;
-    u32 rel_tile_y;
-};
-struct WorldPosition {
-    u32 abs_tile_x;
-    u32 abs_tile_y;
-
-    // this is relative to the tile
-    f32 tile_rel_x;
-    f32 tile_rel_y;
-};
-struct TileChunk {
-    u32 *tiles;
+struct MemoryArena {
+    size_t size;
+    u8 *base;
+    size_t used;
 };
 
 struct World {
-    u32 chunk_shift;
-    u32 chunk_mask;
-    u32 chunk_dim;
-
-    f32 tile_side_in_meters;
-    s32 tile_side_in_pixels;
-    f32 meters_to_pixels;
-
-    s32 tile_chunk_count_x;
-    s32 tile_chunk_count_y;
-
-    TileChunk *tile_chunks;
+    TileMap *tile_map;
 };
 
 struct GameState {
-    WorldPosition player_p;
+    MemoryArena world_arena;
+    World *world;
+    TileMapPosition player_p;
 };
 
 

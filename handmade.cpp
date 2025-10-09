@@ -1,6 +1,8 @@
 // Game Code - Platform Independent
 #include "handmade.h"
 #include "handmade_intrinsics.h"
+#include "handmade_tile.h"
+#include "handmade_tile.cpp"
 
 #define TONE_HZ_START 256
 
@@ -65,146 +67,89 @@ static void draw_rectangle(GameOffscreenBuffer *buffer,
     }
 }
 
-inline static u32 get_tile_value_unchecked(World *world, TileChunk *tile_chunk, u32 tile_x, u32 tile_y) {
-    assert(tile_chunk);
-    assert(tile_x < world->chunk_dim);
-    assert(tile_y < world->chunk_dim);
-
-    u32 tile_chunk_value = tile_chunk->tiles[tile_y * world->chunk_dim + tile_x];
-    return tile_chunk_value;
-}
-
-inline static TileChunk *get_tile_chunk(World *world, s32 tile_chunk_x, s32 tile_chunk_y) {
-    TileChunk *tile_chunk = NULL;
-    if (tile_chunk_x >= 0 && tile_chunk_x < world->tile_chunk_count_x &&
-        tile_chunk_y >= 0 && tile_chunk_y < world->tile_chunk_count_y)
-    {
-        tile_chunk = &world->tile_chunks[tile_chunk_y * world->tile_chunk_count_x + tile_chunk_x];
-    }
-    return tile_chunk;
-}
-
-inline static u32 get_tile_value(World *world, TileChunk *tile_chunk, u32 test_tile_x, u32 test_tile_y) {
-    u32 tile_chunk_value = 0;
-
-    if (tile_chunk) {
-        tile_chunk_value = get_tile_value_unchecked(world, tile_chunk, test_tile_x, test_tile_y);
-    }
-
-    return tile_chunk_value;
-}
-
-inline static void recanonicalize_coord(World *world, u32 *tile, f32 *tile_rel) {
-    // world is a taurus
-
-    s32 offset = floor_f32_to_s32(*tile_rel / world->tile_side_in_meters);
-    *tile += offset;
-    *tile_rel -= (offset * world->tile_side_in_meters);
-
-    assert(*tile_rel >= 0);
-    assert(*tile_rel < world->tile_side_in_meters);
-}
-
-inline static WorldPosition recanonicalize_position(World *world, WorldPosition pos) {
-    WorldPosition result = pos;
-
-    recanonicalize_coord(world, &result.abs_tile_x, &result.tile_rel_x);
-    recanonicalize_coord(world, &result.abs_tile_y, &result.tile_rel_y);
-
-    return result;
-}
-
-inline static TileChunkPosition get_chunk_position_for(World *world, u32 abs_tile_x, u32 abs_tile_y) {
-    TileChunkPosition result;
-
-    result.tile_chunk_x = abs_tile_x >> world->chunk_shift;
-    result.tile_chunk_y = abs_tile_y >> world->chunk_shift;
-    result.rel_tile_x = abs_tile_x & world->chunk_mask;
-    result.rel_tile_y = abs_tile_y & world->chunk_mask;
-
-    return result;
-}
-
-inline static u32 get_tile_value(World *world, u32 abs_tile_x, u32 abs_tile_y) {
-    TileChunkPosition chunk_pos = get_chunk_position_for(world, abs_tile_x, abs_tile_y);
-    TileChunk *tile_chunk = get_tile_chunk(world, chunk_pos.tile_chunk_x, chunk_pos.tile_chunk_y);
-    u32 tile_chunk_value = get_tile_value(world, tile_chunk, chunk_pos.rel_tile_x, chunk_pos.rel_tile_y);
-
-    return tile_chunk_value;
-}
-
-static bool is_world_point_empty(World *world, WorldPosition can_pos) {
-    u32 tile_chunk_value = get_tile_value(world, can_pos.abs_tile_x, can_pos.abs_tile_y);
-    bool empty = (tile_chunk_value == 0);
-
-    return empty;
-}
-
 extern "C" GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
     GameState *game_state = (GameState *)memory->permanent_storage;
     game_output_sound(game_state, sound_buffer, 400);
+}
+
+static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {
+    arena->size = size;
+    arena->base = base;
+    arena->used = 0;
+}
+
+#define push_struct(arena, type) (type *)push_struct_(arena, sizeof(type))
+#define push_array(arena, count, type) (type *)push_struct_(arena, (count) * sizeof(type))
+static void *push_struct_(MemoryArena *arena, size_t size) {
+    assert((arena->used + size) <= arena->size);
+    void *result = arena->base + arena->used;
+    arena->used += size;
+    return result;
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     assert(&input->controllers[0].terminator - &input->controllers[0].buttons[0] == array_count(input->controllers[0].buttons));
     assert(sizeof(GameState) <= memory->permanent_storage_size);
 
-#define TILE_MAP_COUNT_X 256
-#define TILE_MAP_COUNT_Y 256
-    u32 temp_tiles[TILE_MAP_COUNT_Y][TILE_MAP_COUNT_X] = {
-        {1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1},
-        {1, 1, 0, 0,  0, 1, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 1, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 1, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 0},
-        {1, 1, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  0, 1, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 1, 0, 0,  1, 0, 0, 0,  1, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 1, 1, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 1, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1,  1, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0,  0, 0, 0, 0, 1},
-        {1, 1, 1, 1,  1, 1, 1, 1,  0, 1, 1, 1,  1, 1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1,  1, 1, 1, 1, 1},
-    };
-
-    World world;
-    // 256 x 256 tile chunks
-    world.chunk_shift = 8;
-    world.chunk_mask = (1 << world.chunk_shift) - 1;
-    world.chunk_dim = 256;
-
-    world.tile_chunk_count_x = 1;
-    world.tile_chunk_count_y = 1;
-
-    TileChunk tile_chunk;
-    tile_chunk.tiles = (u32 *)temp_tiles;
-    world.tile_chunks = &tile_chunk;
-
-    world.tile_side_in_meters = 1.4f;
-    world.tile_side_in_pixels = 60;
-    world.meters_to_pixels = (f32)world.tile_side_in_pixels / world.tile_side_in_meters;
-
-    f32 lower_left_x = -((f32)world.tile_side_in_pixels / 2);
-    f32 lower_left_y = (f32)buffer->height;
-
     f32 player_height = 1.4f;
     f32 player_width = 0.75f * player_height;
 
-
     GameState *game_state = (GameState *)memory->permanent_storage;
     if (!memory->is_initialized) {
-        game_state->player_p.abs_tile_x = 3;
+        game_state->player_p.abs_tile_x = 1;
         game_state->player_p.abs_tile_y = 3;
         game_state->player_p.tile_rel_x = 5.0f;
         game_state->player_p.tile_rel_y = 5.0f;
 
+        initialize_arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(GameState), (u8 *)memory->permanent_storage + sizeof(GameState));
+        game_state->world = push_struct(&game_state->world_arena, World);
+        World *world = game_state->world;
+        world->tile_map = push_struct(&game_state->world_arena, TileMap);
+
+        TileMap *tile_map = world->tile_map;
+
+        tile_map->chunk_shift = 4;
+        tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
+        tile_map->chunk_dim = (1 << tile_map->chunk_shift);
+        tile_map->tile_chunk_count_x = 128;
+        tile_map->tile_chunk_count_y = 128;
+
+        tile_map->tile_chunks = push_array(&game_state->world_arena, tile_map->tile_chunk_count_x * tile_map->tile_chunk_count_y, TileChunk);
+
+
+        for (u32 y = 0; y < tile_map->tile_chunk_count_y; ++y) {
+            for (u32 x = 0; x < tile_map->tile_chunk_count_x; ++x) {
+                tile_map->tile_chunks[y * tile_map->tile_chunk_count_x + x].tiles = push_array(&game_state->world_arena, tile_map->chunk_dim * tile_map->chunk_dim, u32);
+            }
+        }
+
+        tile_map->tile_side_in_meters = 1.4f;
+        tile_map->tile_side_in_pixels = 60;
+        tile_map->meters_to_pixels = (f32)tile_map->tile_side_in_pixels / tile_map->tile_side_in_meters;
+
+        f32 lower_left_x = -((f32)tile_map->tile_side_in_pixels / 2);
+        f32 lower_left_y = (f32)buffer->height;
+
+        u32 tiles_per_width = 17;
+        u32 tiles_per_height = 9;
+        for (u32 screen_y = 0; screen_y < 32; ++screen_y) {
+            for (u32 screen_x = 0; screen_x < 32; ++screen_x) {
+                for (u32 tile_y = 0; tile_y < tiles_per_height; ++tile_y) {
+                    for (u32 tile_x = 0; tile_x < tiles_per_width; ++tile_x) {
+                        u32 abs_tile_x = screen_x * tiles_per_width + tile_x;
+                        u32 abs_tile_y = screen_y * tiles_per_height + tile_y;
+
+                        set_tile_value(&game_state->world_arena, world->tile_map, abs_tile_x, abs_tile_y, (tile_x == tile_y) && (tile_x % 2) ? 1 : 0);
+                    }
+                }
+            }
+        }
+
         memory->is_initialized = true;
     }
+
+    World *world = game_state->world;
+    TileMap *tile_map = world->tile_map;
 
     for (int i = 0; i < array_count(input->controllers); i++) {
         GameControllerInput *controller = get_controller(input, i);
@@ -224,25 +169,29 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (controller->move_right.ended_down) {
                 d_player_x = 1.0f;
             }
-            d_player_x *= 2.0f;
-            d_player_y *= 2.0f;
+            f32 player_speed = 2.0f;
+            if (controller->action_up.ended_down) {
+                player_speed = 10.0f;
+            }
+            d_player_x *= player_speed;
+            d_player_y *= player_speed;
 
-            WorldPosition new_player_p = game_state->player_p;
+            TileMapPosition new_player_p = game_state->player_p;
             new_player_p.tile_rel_x += input->dt_for_frame * d_player_x;
             new_player_p.tile_rel_y += input->dt_for_frame * d_player_y;
-            new_player_p = recanonicalize_position(&world, new_player_p);
+            new_player_p = recanonicalize_position(tile_map, new_player_p);
 
-            WorldPosition new_player_p_left = new_player_p;
+            TileMapPosition new_player_p_left = new_player_p;
             new_player_p_left.tile_rel_x -= 0.5f * player_width;
-            new_player_p_left = recanonicalize_position(&world, new_player_p_left);
+            new_player_p_left = recanonicalize_position(tile_map, new_player_p_left);
 
-            WorldPosition new_player_p_right = new_player_p;
+            TileMapPosition new_player_p_right = new_player_p;
             new_player_p_right.tile_rel_x += 0.5f * player_width;
-            new_player_p_right = recanonicalize_position(&world, new_player_p_right);
+            new_player_p_right = recanonicalize_position(tile_map, new_player_p_right);
 
-            if (is_world_point_empty(&world, new_player_p) &&
-                is_world_point_empty(&world, new_player_p_left) &&
-                is_world_point_empty(&world, new_player_p_right))
+            if (is_tile_map_point_empty(tile_map, new_player_p) &&
+                is_tile_map_point_empty(tile_map, new_player_p_left) &&
+                is_tile_map_point_empty(tile_map, new_player_p_right))
             {
                 game_state->player_p = new_player_p;
             }
@@ -252,14 +201,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     draw_rectangle(buffer, 0, 0, (f32)buffer->width, (f32)buffer->height, 1.0f, 0.0f, 0.1f);
 
-    f32 center_x = 0.5f * (f32)buffer->width;
-    f32 center_y = 0.5f * (f32)buffer->height;
+    f32 screen_center_x = 0.5f * (f32)buffer->width;
+    f32 screen_center_y = 0.5f * (f32)buffer->height;
 
     for (s32 relrow = -10; relrow < 10; ++relrow) {
         for (s32 relcol = -20; relcol < 20; ++relcol) {
             u32 col = relcol + game_state->player_p.abs_tile_x;
             u32 row = relrow + game_state->player_p.abs_tile_y;
-            u32 tile_id = get_tile_value(&world, col, row);
+            u32 tile_id = get_tile_value(tile_map, col, row);
             f32 gray = 0.5f;
             if (tile_id == 1) {
                 gray = 1.0f;
@@ -267,23 +216,23 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (row == game_state->player_p.abs_tile_y && col == game_state->player_p.abs_tile_x) {
                 gray = 0.0f;
             }
-            f32 min_x = center_x + (f32)relcol * world.tile_side_in_pixels;
-            f32 min_y = center_y - (f32)relrow * world.tile_side_in_pixels;
-            f32 max_x = min_x + world.tile_side_in_pixels;
-            f32 max_y = min_y - world.tile_side_in_pixels;
-            draw_rectangle(buffer, min_x, max_y, max_x, min_y, gray, gray, gray);
+            f32 cen_x = screen_center_x - (tile_map->meters_to_pixels * game_state->player_p.tile_rel_x) + (f32)relcol * tile_map->tile_side_in_pixels;
+            f32 cen_y = screen_center_y + (tile_map->meters_to_pixels * game_state->player_p.tile_rel_y) - (f32)relrow * tile_map->tile_side_in_pixels;
+            f32 min_x = cen_x - 0.5f * tile_map->tile_side_in_pixels;
+            f32 min_y = cen_y - 0.5f * tile_map->tile_side_in_pixels;
+            f32 max_x = cen_x + 0.5f * tile_map->tile_side_in_pixels;
+            f32 max_y = cen_y + 0.5f * tile_map->tile_side_in_pixels;
+            draw_rectangle(buffer, min_x, min_y, max_x, max_y, gray, gray, gray);
         }
     }
     f32 player_r = 1.0f;
     f32 player_g = 1.0f;
     f32 player_b = 0.0f;
-    f32 player_left = center_x + (world.meters_to_pixels * game_state->player_p.tile_rel_x) -
-                      (0.5f * world.meters_to_pixels * player_width);
-    f32 player_top = center_y - (world.meters_to_pixels * game_state->player_p.tile_rel_y) -
-                     (world.meters_to_pixels * player_height);
+    f32 player_left = screen_center_x - (0.5f * tile_map->meters_to_pixels * player_width);
+    f32 player_top = screen_center_y - (tile_map->meters_to_pixels * player_height);
     draw_rectangle(buffer, player_left, player_top,
-                   player_left + (world.meters_to_pixels * player_width),
-                   player_top + (world.meters_to_pixels * player_height),
+                   player_left + (tile_map->meters_to_pixels * player_width),
+                   player_top + (tile_map->meters_to_pixels * player_height),
                    player_r, player_g, player_b);
 }
 

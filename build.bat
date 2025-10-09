@@ -11,7 +11,7 @@ set warning_flags=-WX -W4 -wd4201 -wd4100 -wd4189 -wd4505
 
 set env_variables=-DHANDMADE_INTERNAL=1 -DHANDMADE_SLOW=1 -DHANDMADE_WIN32=1
 
-set compiler_flags=-MTd -Od -Oi -FC -Z7 -GR- -EHa- -nologo -Gm-
+set compiler_flags=-MTd -Od -Oi -FC -Z7 -GR- -EHa- -nologo -Gm- -fp:fast
 
 set linker_flags=-incremental:no -opt:ref
 
