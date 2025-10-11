@@ -42,6 +42,16 @@ typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory_func);
 
 #endif
 
+
+
+// common helpers
+#if HANDMADE_SLOW
+#define assert(expr) if (!(expr)) { *(int *)0 = 0; }
+#else
+#define assert(expr)
+#endif
+
+
 // Game Structs
 struct GameOffscreenBuffer {
     void *memory;
@@ -132,22 +142,20 @@ struct GameState {
     TileMapPosition player_p;
 };
 
+static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {
+    arena->size = size;
+    arena->base = base;
+    arena->used = 0;
+}
 
-// game interface
-#define GAME_UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory *memory, GameInput *input, GameOffscreenBuffer *buffer)
-typedef GAME_UPDATE_AND_RENDER(game_update_and_render_func);
-
-#define GAME_GET_SOUND_SAMPLES(name) void name(ThreadContext *thread, GameMemory *memory, GameOutputSoundBuffer *sound_buffer)
-typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples_func);
-
-
-// common helpers
-#if HANDMADE_SLOW
-#define assert(expr) if (!(expr)) { *(int *)0 = 0; }
-#else
-#define assert(expr)
-#endif
-
+#define push_struct(arena, type) (type *)push_struct_(arena, sizeof(type))
+#define push_array(arena, count, type) (type *)push_struct_(arena, (count) * sizeof(type))
+static void *push_struct_(MemoryArena *arena, size_t size) {
+    assert((arena->used + size) <= arena->size);
+    void *result = arena->base + arena->used;
+    arena->used += size;
+    return result;
+}
 
 static inline u32 safe_truncate_uint64(u64 value) {
     assert(value <= 0xFFFFFF);
@@ -159,5 +167,12 @@ static inline GameControllerInput *get_controller(GameInput *input, int controll
     assert(controller_index < array_count(input->controllers));
     return &input->controllers[controller_index];
 }
+
+// game interface
+#define GAME_UPDATE_AND_RENDER(name) void name(ThreadContext *thread, GameMemory *memory, GameInput *input, GameOffscreenBuffer *buffer)
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render_func);
+
+#define GAME_GET_SOUND_SAMPLES(name) void name(ThreadContext *thread, GameMemory *memory, GameOutputSoundBuffer *sound_buffer)
+typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples_func);
 
 #endif
