@@ -33,9 +33,9 @@ struct TileMapPosition {
     u32 abs_tile_y;
     u32 abs_tile_z;
 
-    // this is relative to the tile
-    f32 tile_rel_x;
-    f32 tile_rel_y;
+    // this is relative to the tile center
+    f32 offset_x;
+    f32 offset_y;
 };
 
 #endif

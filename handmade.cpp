@@ -69,6 +69,31 @@ static void draw_rectangle(GameOffscreenBuffer *buffer,
     }
 }
 
+#pragma pack(push, 1)
+struct BitmapHeader {
+    u16 file_type;
+    u32 file_size;
+    u16 reserved_1;
+    u16 reserved_2;
+    u32 bitmap_offset;
+    u32 size;
+    s32 width;
+    s32 height;
+    u16 planes;
+    u16 bits_per_pixel;
+};
+#pragma pack(pop)
+
+static u32 *debug_load_bmp(ThreadContext *thread, debug_platform_read_entire_file_func *read_entire_file, char *filename) {
+    DebugReadFileResult read_result = read_entire_file(thread, filename);
+    assert(read_result.contents_size > 0);
+
+    BitmapHeader *header = (BitmapHeader *)read_result.contents;
+    u32 *pixels = (u32 *)((u8 *)read_result.contents + header->bitmap_offset);
+
+    return pixels;
+}
+
 extern "C" GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
     GameState *game_state = (GameState *)memory->permanent_storage;
     game_output_sound(game_state, sound_buffer, 400);
@@ -83,11 +108,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     GameState *game_state = (GameState *)memory->permanent_storage;
     if (!memory->is_initialized) {
+        game_state->pixel_pointer = debug_load_bmp(thread, memory->debug_platform_read_entire_file, "test/test_background.bmp");
+
         game_state->player_p.abs_tile_x = 1;
         game_state->player_p.abs_tile_y = 3;
         game_state->player_p.abs_tile_z = 0;
-        game_state->player_p.tile_rel_x = 5.0f;
-        game_state->player_p.tile_rel_y = 5.0f;
+        game_state->player_p.offset_x = 5.0f;
+        game_state->player_p.offset_y = 5.0f;
 
         initialize_arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(GameState), (u8 *)memory->permanent_storage + sizeof(GameState));
         game_state->world = push_struct(&game_state->world_arena, World);
@@ -193,12 +220,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             door_bottom = door_top;
             door_top = false;
             door_right = false;
-            if (door_up) {
-                door_up = false;
-                door_down = true;
-            } else if (door_down) {
-                door_down = false;
-                door_up = true;
+            if (random_choice == 2) {
+                door_up = !door_up;
+                door_down = !door_down;
             } else {
                 door_down = false;
                 door_up = false;
@@ -243,22 +267,30 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             d_player_y *= player_speed;
 
             TileMapPosition new_player_p = game_state->player_p;
-            new_player_p.tile_rel_x += input->dt_for_frame * d_player_x;
-            new_player_p.tile_rel_y += input->dt_for_frame * d_player_y;
+            new_player_p.offset_x += input->dt_for_frame * d_player_x;
+            new_player_p.offset_y += input->dt_for_frame * d_player_y;
             new_player_p = recanonicalize_position(tile_map, new_player_p);
 
             TileMapPosition new_player_p_left = new_player_p;
-            new_player_p_left.tile_rel_x -= 0.5f * player_width;
+            new_player_p_left.offset_x -= 0.5f * player_width;
             new_player_p_left = recanonicalize_position(tile_map, new_player_p_left);
 
             TileMapPosition new_player_p_right = new_player_p;
-            new_player_p_right.tile_rel_x += 0.5f * player_width;
+            new_player_p_right.offset_x += 0.5f * player_width;
             new_player_p_right = recanonicalize_position(tile_map, new_player_p_right);
 
             if (is_tile_map_point_empty(tile_map, new_player_p) &&
                 is_tile_map_point_empty(tile_map, new_player_p_left) &&
                 is_tile_map_point_empty(tile_map, new_player_p_right))
             {
+                if (!are_on_same_tile(&game_state->player_p, &new_player_p)) {
+                    u32 new_tile_value = get_tile_value(tile_map, new_player_p);
+                    if (new_tile_value == 3) {
+                        ++new_player_p.abs_tile_z;
+                    } else if (new_tile_value == 4) {
+                        --new_player_p.abs_tile_z;
+                    }
+                }
                 game_state->player_p = new_player_p;
             }
         }
@@ -286,8 +318,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (row == game_state->player_p.abs_tile_y && col == game_state->player_p.abs_tile_x) {
                     gray = 0.0f;
                 }
-                f32 cen_x = screen_center_x - (meters_to_pixels * game_state->player_p.tile_rel_x) + (f32)relcol * tile_side_in_pixels;
-                f32 cen_y = screen_center_y + (meters_to_pixels * game_state->player_p.tile_rel_y) - (f32)relrow * tile_side_in_pixels;
+                f32 cen_x = screen_center_x - (meters_to_pixels * game_state->player_p.offset_x) + (f32)relcol * tile_side_in_pixels;
+                f32 cen_y = screen_center_y + (meters_to_pixels * game_state->player_p.offset_y) - (f32)relrow * tile_side_in_pixels;
                 f32 min_x = cen_x - 0.5f * tile_side_in_pixels;
                 f32 min_y = cen_y - 0.5f * tile_side_in_pixels;
                 f32 max_x = cen_x + 0.5f * tile_side_in_pixels;
@@ -305,6 +337,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                    player_left + (meters_to_pixels * player_width),
                    player_top + (meters_to_pixels * player_height),
                    player_r, player_g, player_b);
+
+#if 0
+    u32 *source = game_state->pixel_pointer;
+    u32 *dest = (u32 *)buffer->memory;
+    for (s32 y = 0; y < buffer->height; ++y) {
+        for (s32 x = 0; x < buffer->width; ++x) {
+            *dest++ = *source++;
+        }
+    }
+#endif
 }
 
 /*

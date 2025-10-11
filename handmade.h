@@ -140,6 +140,7 @@ struct GameState {
     MemoryArena world_arena;
     World *world;
     TileMapPosition player_p;
+    u32 *pixel_pointer;
 };
 
 static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {

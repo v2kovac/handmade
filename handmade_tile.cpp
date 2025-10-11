@@ -73,8 +73,8 @@ inline static void recanonicalize_coord(TileMap *tile_map, u32 *tile, f32 *tile_
 inline static TileMapPosition recanonicalize_position(TileMap *tile_map, TileMapPosition pos) {
     TileMapPosition result = pos;
 
-    recanonicalize_coord(tile_map, &result.abs_tile_x, &result.tile_rel_x);
-    recanonicalize_coord(tile_map, &result.abs_tile_y, &result.tile_rel_y);
+    recanonicalize_coord(tile_map, &result.abs_tile_x, &result.offset_x);
+    recanonicalize_coord(tile_map, &result.abs_tile_y, &result.offset_y);
 
     return result;
 }
@@ -87,9 +87,16 @@ static u32 get_tile_value(TileMap *tile_map, u32 abs_tile_x, u32 abs_tile_y, u32
     return tile_chunk_value;
 }
 
+static u32 get_tile_value(TileMap *tile_map, TileMapPosition pos) {
+    u32 tile_chunk_value = get_tile_value(tile_map, pos.abs_tile_x, pos.abs_tile_y, pos.abs_tile_z);
+    return tile_chunk_value;
+}
+
 static bool is_tile_map_point_empty(TileMap *tile_map, TileMapPosition can_pos) {
-    u32 tile_chunk_value = get_tile_value(tile_map, can_pos.abs_tile_x, can_pos.abs_tile_y, can_pos.abs_tile_z);
-    bool empty = (tile_chunk_value == 1);
+    u32 tile_chunk_value = get_tile_value(tile_map, can_pos);
+    bool empty = (tile_chunk_value == 1) ||
+                 (tile_chunk_value == 3) ||
+                 (tile_chunk_value == 4);
 
     return empty;
 }
@@ -110,3 +117,11 @@ static void set_tile_value(MemoryArena *arena, TileMap *tile_map, u32 abs_tile_x
 
     set_tile_value(tile_map, tile_chunk, chunk_pos.rel_tile_x, chunk_pos.rel_tile_y, tile_value);
 }
+
+inline static bool are_on_same_tile(TileMapPosition *a, TileMapPosition *b) {
+    bool result = a->abs_tile_x == b->abs_tile_x &&
+                  a->abs_tile_y == b->abs_tile_y &&
+                  a->abs_tile_z == b->abs_tile_z;
+    return result;
+}
+
