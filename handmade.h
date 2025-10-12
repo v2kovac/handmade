@@ -136,11 +136,20 @@ struct World {
     TileMap *tile_map;
 };
 
+struct LoadedBitmap {
+    s32 width;
+    s32 height;
+    u32 *pixels;
+};
+
 struct GameState {
     MemoryArena world_arena;
     World *world;
     TileMapPosition player_p;
-    u32 *pixel_pointer;
+    LoadedBitmap backdrop;
+    LoadedBitmap hero_head;
+    LoadedBitmap hero_cape;
+    LoadedBitmap hero_torso;
 };
 
 static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {

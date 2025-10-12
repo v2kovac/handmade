@@ -725,6 +725,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
 
     WNDCLASS window_class = {};
 
+    // 1920x1080 is 1080p, half that for software render
     resize_dib_section(&g_backbuffer, 960, 540);
 
     window_class.style = CS_HREDRAW|CS_VREDRAW;
