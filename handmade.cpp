@@ -93,7 +93,25 @@ static void draw_bitmap(GameOffscreenBuffer *buffer, LoadedBitmap *bitmap, f32 r
         u32 *dest = (u32 *)dest_row;
         u32 *source = source_row;
         for (s32 x = min_x; x < max_x; ++x) {
-            *dest++ = *source++;
+            f32 a = (f32)((*source >> 24) & 0xFF) / 255.0f;
+            f32 sr = (f32)((*source >> 16) & 0xFF);
+            f32 sg = (f32)((*source >> 8) & 0xFF);
+            f32 sb = (f32)((*source >> 0) & 0xFF);
+
+            f32 dr = (f32)((*dest >> 16) & 0xFF);
+            f32 dg = (f32)((*dest >> 8) & 0xFF);
+            f32 db = (f32)((*dest >> 0) & 0xFF);
+
+            f32 r = ((1.0f - a) * dr) + (a * sr);
+            f32 g = ((1.0f - a) * dg) + (a * sg);
+            f32 b = ((1.0f - a) * db) + (a * sb);
+
+            *dest = ((u32)(r + 0.5f) << 16) |
+                    ((u32)(g + 0.5f) << 8) |
+                    ((u32)(b + 0.5f) << 0);
+
+            ++dest;
+            ++source;
         }
         dest_row += buffer->pitch;
         source_row -= bitmap->width;
@@ -132,18 +150,29 @@ static LoadedBitmap debug_load_bmp(ThreadContext *thread, debug_platform_read_en
     BitmapHeader *header = (BitmapHeader *)read_result.contents;
     u32 *pixels = (u32 *)((u8 *)read_result.contents + header->bitmap_offset);
 
-    // BMP format is 0xRRGGBBAA needs to be 0xAARRGGBB for compatibility with
-    // our blit. Also goes bottom up.
-    // TODO: wrong, there's some masks so r,g,b can move around based on masks
+    assert(header->compression == 3);
+
+    // We want to conver the byte order to 0xAARRGGBB for compatibility with
+    // our blit. Bitmap goes from bottom to top.
+    u32 alpha_mask = ~(header->red_mask | header->green_mask | header->blue_mask);
+
+    u32 red_shift = find_least_significant_set_bit(header->red_mask);
+    u32 green_shift = find_least_significant_set_bit(header->green_mask);
+    u32 blue_shift = find_least_significant_set_bit(header->blue_mask);
+    u32 alpha_shift = find_least_significant_set_bit(alpha_mask);
+
     u32 *source_dest = pixels;
     for (s32 y = 0; y < header->height; ++y) {
         for (s32 x = 0; x < header->width; ++x) {
-            *source_dest = (*source_dest >> 8) | (*source_dest << 24);
-            ++source_dest;
+            u32 c = *source_dest;
+            *source_dest++ = (((c >> alpha_shift) & 0xFF) << 24) |
+                             (((c >> red_shift) & 0xFF) << 16) |
+                             (((c >> green_shift) & 0xFF) << 8) |
+                             (((c >> blue_shift) & 0xFF) << 0);
         }
     }
 
-    LoadedBitmap bitmap;
+    LoadedBitmap bitmap = {};
     bitmap.pixels = pixels;
     bitmap.height = header->height;
     bitmap.width = header->width;

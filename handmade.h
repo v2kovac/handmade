@@ -1,6 +1,25 @@
 #ifndef HANDMADE_H
 #define HANDMADE_H
 
+// Compilers
+// TODO: find the episode where this is moved out to a separate file
+#if !defined(COMPILER_MSVC)
+#define COMPILER_MSVC 0
+#endif
+
+#if !defined(COMPILER_LLVM)
+#define COMPILER_LLVM 0
+#endif
+
+#if !COMPILER_MSVC && !COMPILER_LLVM
+#if _MSC_VER
+#undef COMPILER_MSVC
+#define COMPILER_MSVC 1
+#else
+#define COMPILER_LLVM 1
+#endif
+#endif
+
 #include <stdint.h>
 
 typedef uint8_t u8;
