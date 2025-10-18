@@ -28,6 +28,12 @@ struct TileMap {
     TileChunk *tile_chunks;
 };
 
+struct TileMapDifference {
+    f32 d_x;
+    f32 d_y;
+    f32 d_z;
+};
+
 struct TileMapPosition {
     u32 abs_tile_x;
     u32 abs_tile_y;

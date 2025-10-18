@@ -1,5 +1,5 @@
 // Windows Code - compile this file to get a windows app
-#include "handmade.h"
+#include "handmade_platform.h"
 
 #include <windows.h>
 #include <xinput.h>
@@ -821,6 +821,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         GameControllerInput *new_keyboard_controller = get_controller(new_input, 0);
         GameControllerInput *old_keyboard_controller = get_controller(old_input, 0);
         *new_keyboard_controller = {};
+        new_keyboard_controller->is_connected = true;
         for (int i = 0; i < array_count(new_keyboard_controller->buttons); i++) {
             new_keyboard_controller->buttons[i].ended_down = old_keyboard_controller->buttons[i].ended_down;
         }
@@ -892,6 +893,8 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER, &old_controller->right_shoulder, &new_controller->right_shoulder);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_START, &old_controller->start, &new_controller->start);
                 process_xinput_button(pad->wButtons, XINPUT_GAMEPAD_BACK, &old_controller->back, &new_controller->back);
+            } else {
+                new_controller->is_connected = false;
             }
         }
 
@@ -1072,7 +1075,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
         new_input = old_input;
         old_input = temp;
 
-#if 0
+#if 1
         u64 end_cycle_count = __rdtsc();
         u64 cycles_elapsed = end_cycle_count - last_cycle_count;
         last_cycle_count = end_cycle_count;

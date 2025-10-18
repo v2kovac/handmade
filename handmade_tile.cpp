@@ -125,3 +125,17 @@ inline static bool are_on_same_tile(TileMapPosition *a, TileMapPosition *b) {
     return result;
 }
 
+inline static TileMapDifference subtract(TileMap *tile_map, TileMapPosition *a, TileMapPosition *b) {
+    TileMapDifference result;
+
+    f32 d_tile_x = (f32)a->abs_tile_x - (f32)b->abs_tile_x;
+    f32 d_tile_y = (f32)a->abs_tile_y - (f32)b->abs_tile_y;
+    f32 d_tile_z = (f32)a->abs_tile_z - (f32)b->abs_tile_z;
+
+    result.d_x = (tile_map->tile_side_in_meters * d_tile_x) + (a->offset_x - b->offset_x);
+    result.d_y = (tile_map->tile_side_in_meters * d_tile_y) + (a->offset_y - b->offset_y);
+    result.d_z = (tile_map->tile_side_in_meters * d_tile_z);
+
+    return result;
+}
+
