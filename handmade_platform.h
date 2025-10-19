@@ -37,6 +37,10 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
+#define internal static
+#define local_global static
+#define global static
+
 #define PI32 3.14159265359f
 #define array_count(array) (sizeof(array) / sizeof((array)[0]))
 #define kilobytes(value) ((value) * 1024LL)
@@ -144,13 +148,13 @@ typedef struct {
     debug_platform_write_entire_file_func *debug_platform_write_entire_file;
 } GameMemory;
 
-static inline u32 safe_truncate_uint64(u64 value) {
+internal inline u32 safe_truncate_uint64(u64 value) {
     assert(value <= 0xFFFFFF);
     u32 result = (u32)value;
     return result;
 }
 
-static inline GameControllerInput *get_controller(GameInput *input, int controller_index) {
+internal inline GameControllerInput *get_controller(GameInput *input, int controller_index) {
     assert(controller_index < array_count(input->controllers));
     return &input->controllers[controller_index];
 }

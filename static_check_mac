@@ -1,0 +1,3 @@
+#!/bin/sh
+
+prlctl exec "Windows 11" cmd /c "(if not exist Y:\\ net use Y: \\\\Mac\\code) & Y: && cd handmade && static_check"

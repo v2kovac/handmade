@@ -40,7 +40,7 @@ struct GameState {
     HeroBitmaps hero_bitmaps[4];
 };
 
-static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {
+internal void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {
     arena->size = size;
     arena->base = base;
     arena->used = 0;
@@ -48,7 +48,7 @@ static void initialize_arena(MemoryArena *arena, size_t size, u8 *base) {
 
 #define push_struct(arena, type) (type *)push_struct_(arena, sizeof(type))
 #define push_array(arena, count, type) (type *)push_struct_(arena, (count) * sizeof(type))
-static void *push_struct_(MemoryArena *arena, size_t size) {
+internal void *push_struct_(MemoryArena *arena, size_t size) {
     assert((arena->used + size) <= arena->size);
     void *result = arena->base + arena->used;
     arena->used += size;

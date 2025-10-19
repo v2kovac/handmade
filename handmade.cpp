@@ -8,7 +8,7 @@
 
 #define TONE_HZ_START 256
 
-static void game_output_sound(GameState *game_state, GameOutputSoundBuffer *sound_buffer, int tone_hz) {
+internal void game_output_sound(GameState *game_state, GameOutputSoundBuffer *sound_buffer, int tone_hz) {
     s16 tone_volume = 1000;
     s16 *sample_out = sound_buffer->samples;
     int wave_period = sound_buffer->samples_per_second / tone_hz;
@@ -32,7 +32,7 @@ static void game_output_sound(GameState *game_state, GameOutputSoundBuffer *soun
     }
 }
 
-static void draw_rectangle(GameOffscreenBuffer *buffer,
+internal void draw_rectangle(GameOffscreenBuffer *buffer,
                            f32 real_min_x, f32 real_min_y,
                            f32 real_max_x, f32 real_max_y,
                            f32 r, f32 g, f32 b) {
@@ -68,7 +68,7 @@ static void draw_rectangle(GameOffscreenBuffer *buffer,
     }
 }
 
-static void draw_bitmap(GameOffscreenBuffer *buffer, LoadedBitmap *bitmap,
+internal void draw_bitmap(GameOffscreenBuffer *buffer, LoadedBitmap *bitmap,
                         f32 real_x, f32 real_y,
                         s32 align_x = 0, s32 align_y = 0) {
     real_x -= (f32)align_x;
@@ -152,7 +152,7 @@ struct BitmapHeader {
 };
 #pragma pack(pop)
 
-static LoadedBitmap debug_load_bmp(ThreadContext *thread, debug_platform_read_entire_file_func *read_entire_file, char *filename) {
+internal LoadedBitmap debug_load_bmp(ThreadContext *thread, debug_platform_read_entire_file_func *read_entire_file, char *filename) {
     DebugReadFileResult read_result = read_entire_file(thread, filename);
     assert(read_result.contents_size > 0);
 
@@ -493,7 +493,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 }
 
 /*
-static void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int y_offset) {
+internal void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int y_offset) {
     u32 *arr = (u32 *)buffer->memory;
     for (int y = 0; y < buffer->height; y++) {
         for (int x = 0; x < buffer->width; x++) {
