@@ -1,5 +1,4 @@
-#ifndef HANDMADE_TILE_H
-#define HANDMADE_TILE_H
+#pragma once
 
 struct TileChunk {
     u32 *tiles;
@@ -29,8 +28,7 @@ struct TileMap {
 };
 
 struct TileMapDifference {
-    f32 d_x;
-    f32 d_y;
+    v2 d_xy;
     f32 d_z;
 };
 
@@ -40,8 +38,5 @@ struct TileMapPosition {
     u32 abs_tile_z;
 
     // this is relative to the tile center
-    f32 offset_x;
-    f32 offset_y;
+    v2 offset;
 };
-
-#endif

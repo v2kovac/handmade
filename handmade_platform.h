@@ -1,5 +1,4 @@
-#ifndef HANDMADE_PLATFORM_H
-#define HANDMADE_PLATFORM_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -168,6 +167,4 @@ typedef GAME_GET_SOUND_SAMPLES(game_get_sound_samples_func);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

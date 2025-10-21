@@ -1,7 +1,7 @@
-#ifndef HANDMADE_H
-#define HANDMADE_H
+#pragma once
 
 #include "handmade_platform.h"
+#include "handmade_math.h"
 #include "handmade_tile.h"
 
 struct MemoryArena {
@@ -54,5 +54,3 @@ internal void *push_struct_(MemoryArena *arena, size_t size) {
     arena->used += size;
     return result;
 }
-
-#endif
