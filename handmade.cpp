@@ -420,10 +420,36 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             new_player_p_right.offset.x += 0.5f * player_width;
             new_player_p_right = recanonicalize_position(tile_map, new_player_p_right);
 
-            if (is_tile_map_point_empty(tile_map, new_player_p) &&
-                is_tile_map_point_empty(tile_map, new_player_p_left) &&
-                is_tile_map_point_empty(tile_map, new_player_p_right))
-            {
+            TileMapPosition col_p = {};
+            bool collided = false;
+
+            if (!is_tile_map_point_empty(tile_map, new_player_p)) {
+                col_p = new_player_p;
+                collided = true;
+            }
+            if (!is_tile_map_point_empty(tile_map, new_player_p_left)) {
+                col_p = new_player_p_left;
+                collided = true;
+            }
+            if (!is_tile_map_point_empty(tile_map, new_player_p_right)) {
+                col_p = new_player_p_right;
+                collided = true;
+            }
+
+            if (collided) {
+                v2 r = {0, 0};
+                if (col_p.abs_tile_x < game_state->player_p.abs_tile_x) {
+                    r = v2{1, 0};
+                } else if (col_p.abs_tile_x > game_state->player_p.abs_tile_x) {
+                    r = v2{-1, 0};
+                } else if (col_p.abs_tile_y < game_state->player_p.abs_tile_y) {
+                    r = v2{0, 1};
+                } else if (col_p.abs_tile_y > game_state->player_p.abs_tile_y) {
+                    r = v2{0, -1};
+                }
+                game_state->d_player_p = game_state->d_player_p -
+                                         (1 * inner(game_state->d_player_p, r) * r);
+            } else {
                 if (!are_on_same_tile(&game_state->player_p, &new_player_p)) {
                     u32 new_tile_value = get_tile_value(tile_map, new_player_p);
                     if (new_tile_value == 3) {

@@ -54,3 +54,8 @@ internal inline f32 square(f32 a) {
     f32 result = a * a;
     return result;
 }
+
+internal inline f32 inner(v2 a, v2 b) {
+    f32 result = (a.x * b.x) + (a.y * b.y);
+    return result;
+}
