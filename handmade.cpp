@@ -373,35 +373,43 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         GameControllerInput *controller = get_controller(input, i);
         if (controller->is_analog) {
         } else {
-            v2 d_player = {};
+            v2 dd_player = {};
             if (controller->move_up.ended_down) {
                 game_state->hero_facing_direction = 1;
-                d_player.y = 1.0f;
+                dd_player.y = 1.0f;
             }
             if (controller->move_down.ended_down) {
                 game_state->hero_facing_direction = 3;
-                d_player.y = -1.0f;
+                dd_player.y = -1.0f;
             }
             if (controller->move_left.ended_down) {
                 game_state->hero_facing_direction = 2;
-                d_player.x = -1.0f;
+                dd_player.x = -1.0f;
             }
             if (controller->move_right.ended_down) {
                 game_state->hero_facing_direction = 0;
-                d_player.x = 1.0f;
+                dd_player.x = 1.0f;
             }
-            f32 player_speed = 2.0f;
-            if (controller->action_up.ended_down) {
-                player_speed = 10.0f;
-            }
-            d_player *= player_speed;
 
-            if (d_player.x != 0.0f && d_player.y != 0.0f) {
-                d_player *= 0.707106781187;
+            if (dd_player.x != 0.0f && dd_player.y != 0.0f) {
+                dd_player *= 0.707106781187;
             }
+
+            f32 player_speed = 10.0f;
+            if (controller->action_up.ended_down) {
+                player_speed = 50.0f;
+            }
+            dd_player *= player_speed;
+            // friction
+            dd_player += -1.5f * game_state->d_player_p;
 
             TileMapPosition new_player_p = game_state->player_p;
-            new_player_p.offset += input->dt_for_frame * d_player;
+            // p' = (1/2 * a * t^2) + (v * t) + p
+            new_player_p.offset = (0.5f * dd_player * square(input->dt_for_frame)) +
+                                  (game_state->d_player_p * input->dt_for_frame) +
+                                  new_player_p.offset;
+            // v' = a * t + v
+            game_state->d_player_p = dd_player * input->dt_for_frame + game_state->d_player_p;
             new_player_p = recanonicalize_position(tile_map, new_player_p);
 
             TileMapPosition new_player_p_left = new_player_p;

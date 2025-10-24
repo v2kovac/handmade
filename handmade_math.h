@@ -14,11 +14,10 @@ internal inline v2 operator+(v2 a, v2 b) {
     return result;
 }
 
-inline v2 &operator+=(v2 &a, v2 b) {
+internal inline v2 &operator+=(v2 &a, v2 b) {
     a = a + b;
     return a;
 }
-
 
 internal inline v2 operator-(v2 a, v2 b) {
     v2 result;
@@ -49,4 +48,9 @@ internal inline v2 operator*(v2 a, f32 b) {
 internal inline v2 &operator*=(v2 &a, f32 b) {
     a = a * b;
     return a;
+}
+
+internal inline f32 square(f32 a) {
+    f32 result = a * a;
+    return result;
 }
