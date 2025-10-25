@@ -59,3 +59,8 @@ internal inline f32 inner(v2 a, v2 b) {
     f32 result = (a.x * b.x) + (a.y * b.y);
     return result;
 }
+
+internal inline f32 length_sq(v2 a) {
+    f32 result = inner(a, a);
+    return result;
+}

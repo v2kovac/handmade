@@ -369,6 +369,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 lower_left_x = -((f32)tile_side_in_pixels / 2);
     f32 lower_left_y = (f32)buffer->height;
 
+    TileMapPosition old_player_p = game_state->player_p;
+
     for (int i = 0; i < array_count(input->controllers); i++) {
         GameControllerInput *controller = get_controller(input, i);
         if (controller->is_analog) {
@@ -405,12 +407,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
             TileMapPosition new_player_p = game_state->player_p;
             // p' = (1/2 * a * t^2) + (v * t) + p
-            new_player_p.offset = (0.5f * dd_player * square(input->dt_for_frame)) +
-                                  (game_state->d_player_p * input->dt_for_frame) +
-                                  new_player_p.offset;
+            v2 player_delta = (0.5f * dd_player * square(input->dt_for_frame)) +
+                               (game_state->d_player_p * input->dt_for_frame);
+            new_player_p.offset += player_delta;
             // v' = a * t + v
             game_state->d_player_p = dd_player * input->dt_for_frame + game_state->d_player_p;
             new_player_p = recanonicalize_position(tile_map, new_player_p);
+#if 1
 
             TileMapPosition new_player_p_left = new_player_p;
             new_player_p_left.offset.x -= 0.5f * player_width;
@@ -450,31 +453,57 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 game_state->d_player_p = game_state->d_player_p -
                                          (1 * inner(game_state->d_player_p, r) * r);
             } else {
-                if (!are_on_same_tile(&game_state->player_p, &new_player_p)) {
-                    u32 new_tile_value = get_tile_value(tile_map, new_player_p);
-                    if (new_tile_value == 3) {
-                        ++new_player_p.abs_tile_z;
-                    } else if (new_tile_value == 4) {
-                        --new_player_p.abs_tile_z;
-                    }
-                }
                 game_state->player_p = new_player_p;
             }
+#else
+            u32 min_tile_x = 0;
+            u32 min_tile_y = 0;
+            u32 one_past_max_tile_x = 0;
+            u32 one_past_max_tile_y = 0;
+            u32 abs_tile_z = game_state->player_p.abs_tile_z;
+            TileMapPosition best_player_p = game_state->player_p;
+            f32 best_distance_sq = length_sq(player_delta);
+            for (u32 abs_tile_y = min_tile_y; abs_tile_y != one_past_max_tile_y; ++abs_tile_y) {
+                for (u32 abs_tile_x = min_tile_x; abs_tile_x != one_past_max_tile_x; ++abs_tile_x) {
+                    TileMapPosition test_tile_p = centered_tile_point(abs_tile_x, abs_tile_y, abs_tile_z);
+                    u32 tile_value = get_tile_value(tile_map, abs_tile_x, abs_tile_y, abs_tile_z);
+                    if (is_tile_value_empty(tile_value)) {
+                        v2 min_corner = -0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
+                        v2 max_corner = 0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
 
-            game_state->camera_p.abs_tile_z = game_state->player_p.abs_tile_z;
-            TileMapDifference diff = subtract(tile_map, &game_state->player_p, &game_state->camera_p);
-            if (diff.d_xy.x > (9.0f * tile_map->tile_side_in_meters)) {
-                game_state->camera_p.abs_tile_x += 17;
-            } else if (diff.d_xy.x < -(9.0f * tile_map->tile_side_in_meters)) {
-                game_state->camera_p.abs_tile_x -= 17;
+                        TileMapDifference rel_new_player_p = subtract(tile_map, &test_tile_p, &new_player_p);
+                        v2 test_p = closest_point_in_rectangle(min_corner, max_corner, rel_new_player_p);
+                        if (...) {
+                        }
+                    }
+                }
             }
-            if (diff.d_xy.y > (5.0f * tile_map->tile_side_in_meters)) {
-                game_state->camera_p.abs_tile_y += 9;
-            } else if (diff.d_xy.y < -(5.0f * tile_map->tile_side_in_meters)) {
-                game_state->camera_p.abs_tile_y -= 9;
-            }
+#endif
         }
     }
+
+    if (!are_on_same_tile(&game_state->player_p, &game_state->player_p)) {
+        u32 new_tile_value = get_tile_value(tile_map, game_state->player_p);
+        if (new_tile_value == 3) {
+            ++game_state->player_p.abs_tile_z;
+        } else if (new_tile_value == 4) {
+            --game_state->player_p.abs_tile_z;
+        }
+    }
+
+    game_state->camera_p.abs_tile_z = game_state->player_p.abs_tile_z;
+    TileMapDifference diff = subtract(tile_map, &game_state->player_p, &game_state->camera_p);
+    if (diff.d_xy.x > (9.0f * tile_map->tile_side_in_meters)) {
+        game_state->camera_p.abs_tile_x += 17;
+    } else if (diff.d_xy.x < -(9.0f * tile_map->tile_side_in_meters)) {
+        game_state->camera_p.abs_tile_x -= 17;
+    }
+    if (diff.d_xy.y > (5.0f * tile_map->tile_side_in_meters)) {
+        game_state->camera_p.abs_tile_y += 9;
+    } else if (diff.d_xy.y < -(5.0f * tile_map->tile_side_in_meters)) {
+        game_state->camera_p.abs_tile_y -= 9;
+    }
+    diff = subtract(tile_map, &game_state->player_p, &game_state->camera_p);
 
     draw_bitmap(buffer, &game_state->backdrop, 0, 0);
 
@@ -511,7 +540,6 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
     }
-    TileMapDifference diff = subtract(tile_map, &game_state->player_p, &game_state->camera_p);
     f32 player_r = 1.0f;
     f32 player_g = 1.0f;
     f32 player_b = 0.0f;

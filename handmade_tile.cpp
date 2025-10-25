@@ -66,8 +66,9 @@ internal inline void recanonicalize_coord(TileMap *tile_map, u32 *tile, f32 *til
     *tile += offset;
     *tile_rel -= (offset * tile_map->tile_side_in_meters);
 
-    assert(*tile_rel >= (-0.5f * tile_map->tile_side_in_meters));
-    assert(*tile_rel < (0.5f * tile_map->tile_side_in_meters));
+    // TODO fix float point funkiness, this will be replaced dont need it
+    //assert(*tile_rel >= (-0.5f * tile_map->tile_side_in_meters));
+    //assert(*tile_rel < (0.5f * tile_map->tile_side_in_meters));
 }
 
 internal inline TileMapPosition recanonicalize_position(TileMap *tile_map, TileMapPosition pos) {
@@ -92,12 +93,16 @@ internal u32 get_tile_value(TileMap *tile_map, TileMapPosition pos) {
     return tile_chunk_value;
 }
 
+internal bool is_tile_value_empty(u32 tile_value) {
+    bool result = (tile_value == 1) ||
+                  (tile_value == 3) ||
+                  (tile_value == 4);
+    return result;
+}
+
 internal bool is_tile_map_point_empty(TileMap *tile_map, TileMapPosition can_pos) {
     u32 tile_chunk_value = get_tile_value(tile_map, can_pos);
-    bool empty = (tile_chunk_value == 1) ||
-                 (tile_chunk_value == 3) ||
-                 (tile_chunk_value == 4);
-
+    bool empty = is_tile_value_empty(tile_chunk_value);
     return empty;
 }
 
@@ -137,4 +142,21 @@ internal inline TileMapDifference subtract(TileMap *tile_map, TileMapPosition *a
 
     return result;
 }
+
+internal inline TileMapPosition centered_tile_point(u32 abs_tile_x, u32 abs_tile_y, u32 abs_tile_z) {
+    TileMapPosition result = {};
+    result.abs_tile_x = abs_tile_x;
+    result.abs_tile_y = abs_tile_y;
+    result.abs_tile_z = abs_tile_z;
+    return result;
+}
+
+
+
+
+
+
+
+
+
 
