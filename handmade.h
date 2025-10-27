@@ -28,16 +28,27 @@ struct HeroBitmaps {
     LoadedBitmap torso;
 };
 
+struct Entity {
+    bool exists;
+    TileMapPosition p;
+    v2 dp;
+    u32 facing_direction;
+    f32 width;
+    f32 height;
+};
+
 struct GameState {
     MemoryArena world_arena;
     World *world;
 
-    TileMapPosition player_p;
+    u32 camera_following_entity_index;
     TileMapPosition camera_p;
-    v2 d_player_p;
+
+    u32 player_index_for_controller[array_count(((GameInput *)0)->controllers)];
+    u32 entity_count;
+    Entity entities[256];
 
     LoadedBitmap backdrop;
-    u32 hero_facing_direction;
     HeroBitmaps hero_bitmaps[4];
 };
 

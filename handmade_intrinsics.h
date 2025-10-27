@@ -1,6 +1,11 @@
 #pragma once
 #include "math.h"
 
+internal inline f32 absolute_value(f32 float_32) {
+    f32 result = fabsf(float_32);
+    return result;
+}
+
 internal inline s32 round_f32_to_s32(f32 float_32) {
     return (s32)roundf(float_32);
 }
