@@ -4,6 +4,9 @@
 #include "handmade_math.h"
 #include "handmade_tile.h"
 
+#define min(a, b) ((a < b) ? (a) : (b))
+#define max(a, b) ((a > b) ? (a) : (b))
+
 struct MemoryArena {
     size_t size;
     u8 *base;

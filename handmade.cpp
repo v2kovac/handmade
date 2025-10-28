@@ -226,9 +226,11 @@ internal u32 add_entity(GameState *game_state) {
 internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp) {
     TileMap *tile_map = game_state->world->tile_map;
 
-    if (ddp.x != 0.0f && ddp.y != 0.0f) {
-        ddp *= 0.707106781187;
+    f32 ddp_length = length_sq(ddp);
+    if (ddp_length > 1.0f) {
+        ddp *= (1.0f / square_root(ddp_length));
     }
+
     f32 player_speed = 50.0f;
     ddp *= player_speed;
     // friction
@@ -285,25 +287,26 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
         entity->p = new_player_p;
     }
 #else
-    u32 min_tile_x = 0;
-    u32 min_tile_y = 0;
-    u32 one_past_max_tile_x = 0;
-    u32 one_past_max_tile_y = 0;
+    u32 min_tile_x = min(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
+    u32 min_tile_y = min(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
+    u32 one_past_max_tile_x = max(old_player_p.abs_tile_x, new_player_p.abs_tile_x) + 1;
+    u32 one_past_max_tile_y = max(old_player_p.abs_tile_y, new_player_p.abs_tile_y) + 1;
+
     u32 abs_tile_z = entity->p.abs_tile_z;
-    TileMapPosition best_player_p = entity->p;
-    f32 best_distance_sq = length_sq(player_delta);
+    f32 t_min = 1.0f;
     for (u32 abs_tile_y = min_tile_y; abs_tile_y != one_past_max_tile_y; ++abs_tile_y) {
         for (u32 abs_tile_x = min_tile_x; abs_tile_x != one_past_max_tile_x; ++abs_tile_x) {
             TileMapPosition test_tile_p = centered_tile_point(abs_tile_x, abs_tile_y, abs_tile_z);
             u32 tile_value = get_tile_value(tile_map, abs_tile_x, abs_tile_y, abs_tile_z);
-            if (is_tile_value_empty(tile_value)) {
+            if (!is_tile_value_empty(tile_value)) {
                 v2 min_corner = -0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
                 v2 max_corner = 0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
 
                 TileMapDifference rel_new_player_p = subtract(tile_map, &test_tile_p, &new_player_p);
                 v2 test_p = closest_point_in_rectangle(min_corner, max_corner, rel_new_player_p);
-                if (...) {
-                }
+
+                t_result = (wall_x - rel_new_player_p.x) / player_delta.x;
+                test_wall(min_corner.x, min_corner.y, max_corner.y, rel_new_player_p.x);
             }
         }
     }

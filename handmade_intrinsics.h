@@ -1,6 +1,11 @@
 #pragma once
 #include "math.h"
 
+internal inline f32 square_root(f32 float_32) {
+    f32 result = sqrtf(float_32);
+    return result;
+}
+
 internal inline f32 absolute_value(f32 float_32) {
     f32 result = fabsf(float_32);
     return result;

@@ -891,7 +891,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
             GameControllerInput *new_controller = get_controller(new_input, i);
 
             XINPUT_STATE controller_state;
-            DWORD x_input_get_state_result = XInputGetState(i, &controller_state);
+            DWORD x_input_get_state_result = XInputGetState(i-1, &controller_state);
             if (x_input_get_state_result == ERROR_SUCCESS) {
                 // controller is plugged in
                 XINPUT_GAMEPAD *pad = &controller_state.Gamepad;
