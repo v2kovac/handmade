@@ -223,6 +223,20 @@ internal u32 add_entity(GameState *game_state) {
     return entity_index;
 }
 
+internal void test_wall(f32 wall_x, f32 rel_x, f32 rel_y,
+                        f32 player_delta_x, f32 player_delta_y,
+                        f32 *t_min, f32 min_y, f32 max_y)
+{
+    f32 t_epsilon = 0.0001f;
+    if (player_delta_x != 0.0f) {
+        f32 t_result = (wall_x - rel_x) / player_delta_x;
+        f32 y = rel_y + t_result * player_delta_y;
+        if (t_result >= 0.0f && *t_min > t_result && y >= min_y && y <= max_y) {
+            *t_min = max(0.0f, t_result - t_epsilon);
+        }
+    }
+}
+
 internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp) {
     TileMap *tile_map = game_state->world->tile_map;
 
@@ -237,15 +251,16 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
     ddp += -8.0f * entity->dp;
 
     TileMapPosition old_player_p = entity->p;
-    TileMapPosition new_player_p = old_player_p;
     // p' = (1/2 * a * t^2) + (v * t) + p
     v2 player_delta = (0.5f * ddp * square(dt)) +
                       (entity->dp * dt);
-    new_player_p.offset += player_delta;
     // v' = a * t + v
     entity->dp = ddp * dt + entity->dp;
+
+    TileMapPosition new_player_p = old_player_p;
+    new_player_p.offset += player_delta;
     new_player_p = recanonicalize_position(tile_map, new_player_p);
-#if 1
+#if 0
 
     TileMapPosition new_player_p_left = new_player_p;
     new_player_p_left.offset.x -= 0.5f * entity->width;
@@ -297,19 +312,26 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
     for (u32 abs_tile_y = min_tile_y; abs_tile_y != one_past_max_tile_y; ++abs_tile_y) {
         for (u32 abs_tile_x = min_tile_x; abs_tile_x != one_past_max_tile_x; ++abs_tile_x) {
             TileMapPosition test_tile_p = centered_tile_point(abs_tile_x, abs_tile_y, abs_tile_z);
-            u32 tile_value = get_tile_value(tile_map, abs_tile_x, abs_tile_y, abs_tile_z);
+            u32 tile_value = get_tile_value(tile_map, test_tile_p);
             if (!is_tile_value_empty(tile_value)) {
                 v2 min_corner = -0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
                 v2 max_corner = 0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
 
-                TileMapDifference rel_new_player_p = subtract(tile_map, &test_tile_p, &new_player_p);
-                v2 test_p = closest_point_in_rectangle(min_corner, max_corner, rel_new_player_p);
+                TileMapDifference rel_old_player_p = subtract(tile_map, &old_player_p, &test_tile_p);
+                v2 rel = rel_old_player_p.d_xy;
 
-                t_result = (wall_x - rel_new_player_p.x) / player_delta.x;
-                test_wall(min_corner.x, min_corner.y, max_corner.y, rel_new_player_p.x);
+                test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
+                test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
+                test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
+                test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
             }
         }
     }
+
+    new_player_p = old_player_p;
+    new_player_p.offset += (t_min * player_delta);
+    new_player_p = recanonicalize_position(tile_map, new_player_p);
+    entity->p = new_player_p;
 #endif
 
     if (!are_on_same_tile(&old_player_p, &entity->p)) {
