@@ -205,8 +205,8 @@ internal void initialize_player(GameState *game_state, u32 entity_index) {
     entity->p.abs_tile_x = 1;
     entity->p.abs_tile_y = 3;
     entity->p.abs_tile_z = 0;
-    entity->p.offset.x = 5.0f;
-    entity->p.offset.y = 5.0f;
+    entity->p.offset_.x = 0;
+    entity->p.offset_.y = 0;
     entity->height = 1.4f;
     entity->width = 0.75f * entity->height;
 
@@ -257,9 +257,7 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
     // v' = a * t + v
     entity->dp = ddp * dt + entity->dp;
 
-    TileMapPosition new_player_p = old_player_p;
-    new_player_p.offset += player_delta;
-    new_player_p = recanonicalize_position(tile_map, new_player_p);
+    TileMapPosition new_player_p = offset(tile_map, old_player_p, player_delta);
 #if 0
 
     TileMapPosition new_player_p_left = new_player_p;
@@ -328,10 +326,7 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
         }
     }
 
-    new_player_p = old_player_p;
-    new_player_p.offset += (t_min * player_delta);
-    new_player_p = recanonicalize_position(tile_map, new_player_p);
-    entity->p = new_player_p;
+    entity->p = offset(tile_map, old_player_p, t_min * player_delta);
 #endif
 
     if (!are_on_same_tile(&old_player_p, &entity->p)) {
@@ -358,11 +353,6 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
             entity->facing_direction = 3;
         }
     }
-}
-
-extern "C" GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
-    GameState *game_state = (GameState *)memory->permanent_storage;
-    game_output_sound(game_state, sound_buffer, 400);
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
@@ -609,11 +599,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     0.5f * tile_side_in_pixels
                 };
                 v2 cen = {
-                    screen_center_x - (meters_to_pixels * game_state->camera_p.offset.x) + (f32)relcol * tile_side_in_pixels,
-                    screen_center_y + (meters_to_pixels * game_state->camera_p.offset.y) - (f32)relrow * tile_side_in_pixels
+                    screen_center_x - (meters_to_pixels * game_state->camera_p.offset_.x) + (f32)relcol * tile_side_in_pixels,
+                    screen_center_y + (meters_to_pixels * game_state->camera_p.offset_.y) - (f32)relrow * tile_side_in_pixels
                 };
-                v2 min = cen - tile_side;
-                v2 max = cen + tile_side;
+                v2 min = cen - 0.9f * tile_side;
+                v2 max = cen + 0.9f * tile_side;
                 draw_rectangle(buffer, min, max, gray, gray, gray);
             }
         }
@@ -649,15 +639,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 }
 
-/*
-internal void render_weird_gradient(GameOffscreenBuffer *buffer, int x_offset, int y_offset) {
-    u32 *arr = (u32 *)buffer->memory;
-    for (int y = 0; y < buffer->height; y++) {
-        for (int x = 0; x < buffer->width; x++) {
-            u8 blue = (u8)(x + x_offset);
-            u8 green = (u8)(y + y_offset);
-            *arr++ = ((green << 16) | blue);
-        }
-    }
+extern "C" GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
+    GameState *game_state = (GameState *)memory->permanent_storage;
+    game_output_sound(game_state, sound_buffer, 400);
 }
-*/
+

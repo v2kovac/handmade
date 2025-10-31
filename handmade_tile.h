@@ -38,5 +38,5 @@ struct TileMapPosition {
     u32 abs_tile_z;
 
     // this is relative to the tile center
-    v2 offset;
+    v2 offset_;
 };

@@ -74,8 +74,8 @@ internal inline void recanonicalize_coord(TileMap *tile_map, u32 *tile, f32 *til
 internal inline TileMapPosition recanonicalize_position(TileMap *tile_map, TileMapPosition pos) {
     TileMapPosition result = pos;
 
-    recanonicalize_coord(tile_map, &result.abs_tile_x, &result.offset.x);
-    recanonicalize_coord(tile_map, &result.abs_tile_y, &result.offset.y);
+    recanonicalize_coord(tile_map, &result.abs_tile_x, &result.offset_.x);
+    recanonicalize_coord(tile_map, &result.abs_tile_y, &result.offset_.y);
 
     return result;
 }
@@ -137,7 +137,7 @@ internal inline TileMapDifference subtract(TileMap *tile_map, TileMapPosition *a
                      (f32)a->abs_tile_y - (f32)b->abs_tile_y };
     f32 d_tile_z = (f32)a->abs_tile_z - (f32)b->abs_tile_z;
 
-    result.d_xy = (tile_map->tile_side_in_meters * d_tile_xy) + (a->offset - b->offset);
+    result.d_xy = (tile_map->tile_side_in_meters * d_tile_xy) + (a->offset_ - b->offset_);
     result.d_z = (tile_map->tile_side_in_meters * d_tile_z);
 
     return result;
@@ -151,6 +151,11 @@ internal inline TileMapPosition centered_tile_point(u32 abs_tile_x, u32 abs_tile
     return result;
 }
 
+internal inline TileMapPosition offset(TileMap *tile_map, TileMapPosition p, v2 offset) {
+    p.offset_ += offset;
+    p = recanonicalize_position(tile_map, p);
+    return p;
+}
 
 
 
