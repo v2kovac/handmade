@@ -207,8 +207,8 @@ internal void initialize_player(GameState *game_state, u32 entity_index) {
     entity->p.abs_tile_z = 0;
     entity->p.offset_.x = 0;
     entity->p.offset_.y = 0;
-    entity->height = 1.4f;
-    entity->width = 0.75f * entity->height;
+    entity->height = 0.5f;
+    entity->width = 1.0f;
 
     if (!get_entity(game_state, game_state->camera_following_entity_index)) {
         game_state->camera_following_entity_index = entity_index;
@@ -223,18 +223,22 @@ internal u32 add_entity(GameState *game_state) {
     return entity_index;
 }
 
-internal void test_wall(f32 wall_x, f32 rel_x, f32 rel_y,
+internal bool test_wall(f32 wall_x, f32 rel_x, f32 rel_y,
                         f32 player_delta_x, f32 player_delta_y,
                         f32 *t_min, f32 min_y, f32 max_y)
 {
+    bool hit = false;;
     f32 t_epsilon = 0.0001f;
     if (player_delta_x != 0.0f) {
         f32 t_result = (wall_x - rel_x) / player_delta_x;
         f32 y = rel_y + t_result * player_delta_y;
         if (t_result >= 0.0f && *t_min > t_result && y >= min_y && y <= max_y) {
+            hit = true;
             *t_min = max(0.0f, t_result - t_epsilon);
         }
     }
+
+    return hit;
 }
 
 internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp) {
@@ -302,31 +306,73 @@ internal void move_player(GameState *game_state, Entity *entity, f32 dt, v2 ddp)
 #else
     u32 min_tile_x = min(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
     u32 min_tile_y = min(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
-    u32 one_past_max_tile_x = max(old_player_p.abs_tile_x, new_player_p.abs_tile_x) + 1;
-    u32 one_past_max_tile_y = max(old_player_p.abs_tile_y, new_player_p.abs_tile_y) + 1;
+    u32 max_tile_x = max(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
+    u32 max_tile_y = max(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
+
+    u32 entity_tile_width = ceil_f32_to_s32(entity->width / tile_map->tile_side_in_meters);
+    u32 entity_tile_height = ceil_f32_to_s32(entity->height / tile_map->tile_side_in_meters);
+
+    min_tile_x -= entity_tile_width;
+    min_tile_y -= entity_tile_height;
+    max_tile_x += entity_tile_width;
+    max_tile_y += entity_tile_height;
+
+    assert((max_tile_x - min_tile_x) < 32);
+    assert((max_tile_y - min_tile_y) < 32);
 
     u32 abs_tile_z = entity->p.abs_tile_z;
-    f32 t_min = 1.0f;
-    for (u32 abs_tile_y = min_tile_y; abs_tile_y != one_past_max_tile_y; ++abs_tile_y) {
-        for (u32 abs_tile_x = min_tile_x; abs_tile_x != one_past_max_tile_x; ++abs_tile_x) {
-            TileMapPosition test_tile_p = centered_tile_point(abs_tile_x, abs_tile_y, abs_tile_z);
-            u32 tile_value = get_tile_value(tile_map, test_tile_p);
-            if (!is_tile_value_empty(tile_value)) {
-                v2 min_corner = -0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
-                v2 max_corner = 0.5f * v2{tile_map->tile_side_in_meters, tile_map->tile_side_in_meters};
+    f32 t_remaining = 1.0f;
 
-                TileMapDifference rel_old_player_p = subtract(tile_map, &old_player_p, &test_tile_p);
-                v2 rel = rel_old_player_p.d_xy;
+    for (u32 i = 0; i < 4 && t_remaining > 0.0f; ++i) {
+        f32 t_min = 1.0f;
+        v2 wall_normal = {};
 
-                test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
-                test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, &t_min, min_corner.y, max_corner.y);
-                test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
-                test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, &t_min, min_corner.x, max_corner.x);
+        for (u32 abs_tile_y = min_tile_y; abs_tile_y <= max_tile_y; ++abs_tile_y) {
+            for (u32 abs_tile_x = min_tile_x; abs_tile_x <= max_tile_x; ++abs_tile_x) {
+                TileMapPosition test_tile_p = centered_tile_point(abs_tile_x, abs_tile_y, abs_tile_z);
+                u32 tile_value = get_tile_value(tile_map, test_tile_p);
+                if (!is_tile_value_empty(tile_value)) {
+                    f32 diameter_w = tile_map->tile_side_in_meters + entity->width;
+                    f32 diameter_h = tile_map->tile_side_in_meters + entity->height;
+                    v2 min_corner = -0.5f * v2{diameter_w, diameter_h};
+                    v2 max_corner = 0.5f * v2{diameter_w, diameter_h};
+
+                    TileMapDifference rel_old_player_p = subtract(tile_map, &entity->p, &test_tile_p);
+                    v2 rel = rel_old_player_p.d_xy;
+
+                    if (test_wall(min_corner.x,
+                                  rel.x, rel.y, player_delta.x, player_delta.y,
+                                  &t_min, min_corner.y, max_corner.y))
+                    {
+                        wall_normal = v2{-1, 0};
+                    }
+                    if (test_wall(max_corner.x,
+                                  rel.x, rel.y, player_delta.x, player_delta.y,
+                                  &t_min, min_corner.y, max_corner.y))
+                    {
+                        wall_normal = v2{1, 0};
+                    }
+                    if (test_wall(min_corner.y,
+                                  rel.y, rel.x, player_delta.y, player_delta.x,
+                                  &t_min, min_corner.x, max_corner.x))
+                    {
+                        wall_normal = v2{0, -1};
+                    }
+                    if (test_wall(max_corner.y,
+                                  rel.y, rel.x, player_delta.y, player_delta.x,
+                                  &t_min, min_corner.x, max_corner.x))
+                    {
+                        wall_normal = v2{0, 1};
+                    }
+                }
             }
         }
-    }
 
-    entity->p = offset(tile_map, old_player_p, t_min * player_delta);
+        entity->p = offset(tile_map, entity->p, t_min * player_delta);
+        entity->dp = entity->dp - (1 * inner(entity->dp, wall_normal) * wall_normal);
+        player_delta = player_delta - (1 * inner(player_delta, wall_normal) * wall_normal);
+        t_remaining -= (t_min * t_remaining);
+    }
 #endif
 
     if (!are_on_same_tile(&old_player_p, &entity->p)) {
@@ -620,7 +666,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             f32 player_ground_point_y = screen_center_y - meters_to_pixels * diff.d_xy.y;
             v2 player_left_top = {
                 player_ground_point_x - (0.5f * meters_to_pixels * entity->width),
-                player_ground_point_y - (meters_to_pixels * entity->height)
+                player_ground_point_y - (0.5f * meters_to_pixels * entity->height)
             };
             v2 entity_width_height = {
                 meters_to_pixels * entity->width,

@@ -27,6 +27,10 @@ internal inline s32 floor_f32_to_s32(f32 float_32) {
     return (s32)floorf(float_32);
 }
 
+internal inline s32 ceil_f32_to_s32(f32 float_32) {
+    return (s32)ceilf(float_32);
+}
+
 internal inline f32 sin(f32 angle) {
     return sinf(angle);
 }
