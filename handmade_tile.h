@@ -1,7 +1,7 @@
 #pragma once
 
 struct TileChunk {
-    u32 *tiles;
+    u32* tiles;
 };
 
 struct TileChunkPosition {
@@ -24,7 +24,7 @@ struct TileMap {
     u32 tile_chunk_count_y;
     u32 tile_chunk_count_z;
 
-    TileChunk *tile_chunks;
+    TileChunk* tile_chunks;
 };
 
 struct TileMapDifference {

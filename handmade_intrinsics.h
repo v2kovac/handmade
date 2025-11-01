@@ -46,7 +46,7 @@ internal inline f32 atan2(f32 y, f32 x) {
 internal inline u32 find_least_significant_set_bit(u32 value) {
 #if COMPILER_MSVC
     u32 index;
-    bool found = _BitScanForward((unsigned long *)&index, value);
+    bool found = _BitScanForward((unsigned long*)&index, value);
     assert(found);
     return index;
 #else
