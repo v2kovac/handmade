@@ -71,9 +71,10 @@ internal inline void recanonicalize_coord(TileMap* tile_map, u32* tile, f32* til
     //assert(*tile_rel < (0.5f * tile_map->tile_side_in_meters));
 }
 
-internal inline TileMapPosition recanonicalize_position(TileMap* tile_map, TileMapPosition pos) {
-    TileMapPosition result = pos;
+internal inline TileMapPosition map_to_tile_space(TileMap* tile_map, TileMapPosition base_pos, v2 offset) {
+    TileMapPosition result = base_pos;
 
+    result.offset_ += offset;
     recanonicalize_coord(tile_map, &result.abs_tile_x, &result.offset_.x);
     recanonicalize_coord(tile_map, &result.abs_tile_y, &result.offset_.y);
 
@@ -149,12 +150,6 @@ internal inline TileMapPosition centered_tile_point(u32 abs_tile_x, u32 abs_tile
     result.abs_tile_y = abs_tile_y;
     result.abs_tile_z = abs_tile_z;
     return result;
-}
-
-internal inline TileMapPosition offset(TileMap* tile_map, TileMapPosition p, v2 offset) {
-    p.offset_ += offset;
-    p = recanonicalize_position(tile_map, p);
-    return p;
 }
 
 
