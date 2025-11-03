@@ -64,3 +64,23 @@ internal inline f32 length_sq(v2 a) {
     f32 result = inner(a, a);
     return result;
 }
+
+struct Rect2 {
+    v2 min;
+    v2 max;
+};
+
+internal inline Rect2 rect_center_half_dim(v2 center, v2 half_dim) {
+    return Rect2{center - half_dim, center + half_dim};
+}
+
+internal inline Rect2 rect_center_dim(v2 center, v2 dim) {
+    return rect_center_half_dim(center, 0.5f * dim);
+}
+
+internal inline bool is_in_rect(Rect2 rect, v2 test) {
+    return test.x >= rect.min.x &&
+           test.y >= rect.min.y &&
+           test.x < rect.max.x &&
+           test.y < rect.max.y;
+}

@@ -44,7 +44,14 @@ struct HighEntity {
 struct LowEntity {
 };
 
+enum EntityType {
+    ET_NULL,
+    ET_HERO,
+    ET_WALL,
+};
+
 struct DormantEntity {
+    EntityType type;
     TileMapPosition p;
     f32 width, height;
 
