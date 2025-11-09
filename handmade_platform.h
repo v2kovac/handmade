@@ -54,6 +54,8 @@ typedef double f64;
 #define assert(expr)
 #endif
 
+#define INVALID_CODE_PATH assert(!"Invalid Code Path")
+
 typedef struct {
     int placeholder;
 } ThreadContext;

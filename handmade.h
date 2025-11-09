@@ -31,6 +31,12 @@ struct HeroBitmaps {
     LoadedBitmap torso;
 };
 
+enum EntityType {
+    ET_NULL,
+    ET_HERO,
+    ET_WALL,
+};
+
 struct HighEntity {
     v2 p; // relative to camera
     v2 dp;
@@ -39,18 +45,11 @@ struct HighEntity {
 
     f32 z;
     f32 dz;
+
+    u32 low_entity_index;
 };
 
 struct LowEntity {
-};
-
-enum EntityType {
-    ET_NULL,
-    ET_HERO,
-    ET_WALL,
-};
-
-struct DormantEntity {
     EntityType type;
     TileMapPosition p;
     f32 width, height;
@@ -58,20 +57,14 @@ struct DormantEntity {
     // this is for stairs
     bool collides;
     s32 d_abs_tile_z;
-};
 
-enum EntityResidence {
-    ER_NONEXISTENT,
-    ER_DORMANT,
-    ER_LOW,
-    ER_HIGH,
+    u32 high_entity_index;
 };
 
 struct Entity {
-    u32 residence;
+    u32 low_index;
     HighEntity* high;
     LowEntity* low;
-    DormantEntity* dormant;
 };
 
 struct GameState {
@@ -82,12 +75,12 @@ struct GameState {
     TileMapPosition camera_p;
 
     u32 player_index_for_controller[array_count(((GameInput*)0)->controllers)];
-    u32 entity_count;
 
-    EntityResidence entity_residencies[256];
-    HighEntity high_entities[256];
-    LowEntity low_entities[256];
-    DormantEntity dormant_entities[256];
+    u32 high_entity_count;
+    HighEntity high_entities_[256];
+
+    u32 low_entity_count;
+    LowEntity low_entities[4096];
 
     LoadedBitmap backdrop;
     LoadedBitmap shadow;
