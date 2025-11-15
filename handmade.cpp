@@ -280,15 +280,10 @@ internal u32 add_player(GameState* game_state) {
     u32 entity_index = add_low_entity(game_state, ET_HERO);
     LowEntity* low_entity = get_low_entity(game_state, entity_index);
 
-    low_entity->p.abs_tile_x = 1;
-    low_entity->p.abs_tile_y = 3;
+    low_entity->p = game_state->camera_p;
     low_entity->height = 0.5f;
     low_entity->width = 1.0f;
     low_entity->collides = true;
-
-    // TODO bug? make high
-    // nocheckin
-    //change_entity_residence(game_state, entity_index, ER_HIGH);
 
     if (game_state->camera_following_entity_index == 0) {
         game_state->camera_following_entity_index = entity_index;
@@ -466,16 +461,10 @@ internal void set_camera(GameState *game_state, TileMapPosition new_camera_p) {
     v2 entity_offset_for_frame = -d_camera_p.d_xy;
     offset_and_check_frequency_by_area(game_state, entity_offset_for_frame, camera_bounds);
 
-    u32 min_tile_x = new_camera_p.abs_tile_x - tile_span_x/2;
-    if (min_tile_x > new_camera_p.abs_tile_x) {
-        min_tile_x = 0;
-    }
-    u32 max_tile_x = new_camera_p.abs_tile_x + tile_span_x/2;
-    u32 min_tile_y = new_camera_p.abs_tile_y - tile_span_y/2;
-    if (min_tile_y > new_camera_p.abs_tile_y) {
-        min_tile_y = 0;
-    }
-    u32 max_tile_y = new_camera_p.abs_tile_y + tile_span_y/2;
+    s32 min_tile_x = new_camera_p.abs_tile_x - tile_span_x/2;
+    s32 max_tile_x = new_camera_p.abs_tile_x + tile_span_x/2;
+    s32 min_tile_y = new_camera_p.abs_tile_y - tile_span_y/2;
+    s32 max_tile_y = new_camera_p.abs_tile_y + tile_span_y/2;
     for (u32 entity_index = 1; entity_index < game_state->low_entity_count; ++entity_index) {
         LowEntity* low = game_state->low_entities + entity_index;
 
@@ -541,27 +530,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         world->tile_map = push_struct(&game_state->world_arena, TileMap);
 
         TileMap* tile_map = world->tile_map;
-
-        tile_map->chunk_shift = 4;
-        tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
-        tile_map->chunk_dim = (1 << tile_map->chunk_shift);
-        tile_map->tile_chunk_count_x = 128;
-        tile_map->tile_chunk_count_y = 128;
-        tile_map->tile_chunk_count_z = 2;
-
-        tile_map->tile_chunks = push_array(&game_state->world_arena,
-                                           tile_map->tile_chunk_count_x *
-                                           tile_map->tile_chunk_count_y *
-                                           tile_map->tile_chunk_count_z,
-                                           TileChunk);
-
-        tile_map->tile_side_in_meters = 1.4f;
+        initialize_tile_map(tile_map, 1.4f);
 
         u32 tiles_per_width = 17;
         u32 tiles_per_height = 9;
-        u32 screen_y = 0;
-        u32 screen_x = 0;
-        u32 abs_tile_z = 0;
+        u32 screen_base_x = 0;
+        u32 screen_base_y = 0;
+        u32 screen_base_z = 0;
+        u32 screen_x = screen_base_x;
+        u32 screen_y = screen_base_y;
+        u32 abs_tile_z = screen_base_z;
         bool door_right = false;
         bool door_left = false;
         bool door_top = false;
@@ -583,7 +561,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             } else if (random_choice == 1) {
                 door_right = true;
             } else if (random_choice == 2) {
-                if (abs_tile_z == 0) {
+                if (abs_tile_z == screen_base_z) {
                     door_up = true;
                 } else {
                     door_down = true;
@@ -635,10 +613,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             } else if (random_choice == 1) {
                 screen_x += 1;
             } else if (random_choice == 2) {
-                if (abs_tile_z == 0) {
-                    abs_tile_z = 1;
+                if (abs_tile_z == screen_base_z) {
+                    abs_tile_z = screen_base_z + 1;
                 } else {
-                    abs_tile_z = 0;
+                    abs_tile_z = screen_base_z;
                 }
             }
             door_left = door_right;
@@ -655,8 +633,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
 
         TileMapPosition new_camera_p = {};
-        new_camera_p.abs_tile_x = 17/2;
-        new_camera_p.abs_tile_y = 9/2;
+        new_camera_p.abs_tile_x = screen_base_x*tiles_per_width + 17/2;
+        new_camera_p.abs_tile_y = screen_base_y*tiles_per_height + 9/2;
+        new_camera_p.abs_tile_z = screen_base_z;
         set_camera(game_state, new_camera_p);
 
         memory->is_initialized = true;

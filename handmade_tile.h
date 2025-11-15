@@ -1,30 +1,32 @@
 #pragma once
 
 struct TileChunk {
+    s32 tile_chunk_x;
+    s32 tile_chunk_y;
+    s32 tile_chunk_z;
+
     u32* tiles;
+
+    TileChunk* next_in_hash;
 };
 
 struct TileChunkPosition {
-    u32 tile_chunk_x;
-    u32 tile_chunk_y;
-    u32 tile_chunk_z;
+    s32 tile_chunk_x;
+    s32 tile_chunk_y;
+    s32 tile_chunk_z;
 
-    u32 rel_tile_x;
-    u32 rel_tile_y;
+    s32 rel_tile_x;
+    s32 rel_tile_y;
 };
 
 struct TileMap {
-    u32 chunk_shift;
-    u32 chunk_mask;
-    u32 chunk_dim;
+    s32 chunk_shift;
+    s32 chunk_mask;
+    s32 chunk_dim;
 
     f32 tile_side_in_meters;
 
-    u32 tile_chunk_count_x;
-    u32 tile_chunk_count_y;
-    u32 tile_chunk_count_z;
-
-    TileChunk* tile_chunks;
+    TileChunk tile_chunk_hash[4096];
 };
 
 struct TileMapDifference {
@@ -33,9 +35,12 @@ struct TileMapDifference {
 };
 
 struct TileMapPosition {
-    u32 abs_tile_x;
-    u32 abs_tile_y;
-    u32 abs_tile_z;
+    // These are fixed point tile locations
+    // high bits are tile chunk index
+    // low bits are the tile index in the chunk
+    s32 abs_tile_x;
+    s32 abs_tile_y;
+    s32 abs_tile_z;
 
     // this is relative to the tile center
     v2 offset_;
