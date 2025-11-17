@@ -2,7 +2,7 @@
 
 #include "handmade_platform.h"
 #include "handmade_math.h"
-#include "handmade_tile.h"
+#include "handmade_world.h"
 
 #define min(a, b) ((a < b) ? (a) : (b))
 #define max(a, b) ((a > b) ? (a) : (b))
@@ -11,10 +11,6 @@ struct MemoryArena {
     size_t size;
     u8* base;
     size_t used;
-};
-
-struct World {
-    TileMap* tile_map;
 };
 
 struct LoadedBitmap {
@@ -51,7 +47,7 @@ struct HighEntity {
 
 struct LowEntity {
     EntityType type;
-    TileMapPosition p;
+    WorldPosition p;
     f32 width, height;
 
     // this is for stairs
@@ -67,12 +63,17 @@ struct Entity {
     LowEntity* low;
 };
 
+struct LowEntityChunkReference {
+    WorldChunk* tile_chunk;
+    u32 entity_index_in_chunk;
+};
+
 struct GameState {
     MemoryArena world_arena;
     World* world;
 
     u32 camera_following_entity_index;
-    TileMapPosition camera_p;
+    WorldPosition camera_p;
 
     u32 player_index_for_controller[array_count(((GameInput*)0)->controllers)];
 
@@ -80,7 +81,7 @@ struct GameState {
     HighEntity high_entities_[256];
 
     u32 low_entity_count;
-    LowEntity low_entities[4096];
+    LowEntity low_entities[100000];
 
     LoadedBitmap backdrop;
     LoadedBitmap shadow;

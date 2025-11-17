@@ -1,8 +1,8 @@
 // Game Code - Platform Independent
 #include "handmade.h"
 #include "handmade_intrinsics.h"
-#include "handmade_tile.h"
-#include "handmade_tile.cpp"
+#include "handmade_world.h"
+#include "handmade_world.cpp"
 // TODO: remove this when we make our own rand func
 #include <stdlib.h>
 
@@ -202,7 +202,7 @@ internal inline HighEntity* make_entity_high_freq(GameState* game_state, u32 low
     u32 high_index = game_state->high_entity_count++;
     HighEntity* high_entity = game_state->high_entities_ + high_index;
 
-    TileMapDifference diff = subtract(game_state->world->tile_map, &low_entity->p, &game_state->camera_p);
+    WorldDifference diff = subtract(game_state->world, &low_entity->p, &game_state->camera_p);
     high_entity->p = diff.d_xy;
     high_entity->dp = v2{0,0};
     high_entity->abs_tile_z = low_entity->p.abs_tile_z;
@@ -252,12 +252,12 @@ internal inline Entity get_high_entity(GameState* game_state, u32 low_index) {
     return result;
 }
 
-internal inline void offset_and_check_frequency_by_area(GameState* game_state, v2 offset, Rect2 camera_bounds) {
+internal inline void offset_and_check_frequency_by_area(GameState* game_state, v2 offset, Rect2 high_freq_bounds) {
     for (u32 entity_index = 1; entity_index < game_state->high_entity_count;) {
         HighEntity* high = game_state->high_entities_ + entity_index;
         high->p += offset;
 
-        if (is_in_rect(camera_bounds, high->p)) {
+        if (is_in_rect(high_freq_bounds, high->p)) {
             // make_entity_low_freq mutates array, advance index here
             ++entity_index;
         } else {
@@ -299,7 +299,7 @@ internal u32 add_wall(GameState* game_state, u32 abs_tile_x, u32 abs_tile_y, u32
     low_entity->p.abs_tile_x = abs_tile_x;
     low_entity->p.abs_tile_y = abs_tile_y;
     low_entity->p.abs_tile_z = abs_tile_z;
-    low_entity->height = game_state->world->tile_map->tile_side_in_meters;
+    low_entity->height = game_state->world->tile_side_in_meters;
     low_entity->width = low_entity->height;
     low_entity->collides = true;
 
@@ -325,7 +325,7 @@ internal bool test_wall(f32 wall_x, f32 rel_x, f32 rel_y,
 }
 
 internal void move_player(GameState* game_state, Entity entity, f32 dt, v2 ddp) {
-    TileMap* tile_map = game_state->world->tile_map;
+    World* world = game_state->world;
 
     f32 ddp_length = length_sq(ddp);
     if (ddp_length > 1.0f) {
@@ -352,8 +352,8 @@ internal void move_player(GameState* game_state, Entity entity, f32 dt, v2 ddp) 
     u32 max_tile_x = max(old_player_p.abs_tile_x, new_player_p.abs_tile_x);
     u32 max_tile_y = max(old_player_p.abs_tile_y, new_player_p.abs_tile_y);
 
-    u32 entity_tile_width = ceil_f32_to_s32(entity->width / tile_map->tile_side_in_meters);
-    u32 entity_tile_height = ceil_f32_to_s32(entity->height / tile_map->tile_side_in_meters);
+    u32 entity_tile_width = ceil_f32_to_s32(entity->width / world->tile_side_in_meters);
+    u32 entity_tile_height = ceil_f32_to_s32(entity->height / world->tile_side_in_meters);
 
     min_tile_x -= entity_tile_width;
     min_tile_y -= entity_tile_height;
@@ -445,18 +445,18 @@ internal void move_player(GameState* game_state, Entity entity, f32 dt, v2 ddp) 
         }
     }
 
-    entity.low->p = map_to_tile_space(game_state->world->tile_map, game_state->camera_p, entity.high->p);
+    entity.low->p = map_to_tile_space(game_state->world, game_state->camera_p, entity.high->p);
 }
 
-internal void set_camera(GameState *game_state, TileMapPosition new_camera_p) {
-    TileMap* tile_map = game_state->world->tile_map;
-    TileMapDifference d_camera_p = subtract(tile_map, &new_camera_p, &game_state->camera_p);
+internal void set_camera(GameState *game_state, WorldPosition new_camera_p) {
+    World* world = game_state->world;
+    WorldDifference d_camera_p = subtract(world, &new_camera_p, &game_state->camera_p);
     game_state->camera_p = new_camera_p;
 
     u32 tile_span_x = 17 * 3;
     u32 tile_span_y = 9 * 3;
     Rect2 camera_bounds = rect_center_dim(v2{0,0},
-                                          tile_map->tile_side_in_meters * v2{(f32)tile_span_x, (f32)tile_span_y});
+                                          world->tile_side_in_meters * v2{(f32)tile_span_x, (f32)tile_span_y});
 
     v2 entity_offset_for_frame = -d_camera_p.d_xy;
     offset_and_check_frequency_by_area(game_state, entity_offset_for_frame, camera_bounds);
@@ -527,10 +527,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         initialize_arena(&game_state->world_arena, memory->permanent_storage_size - sizeof(GameState), (u8*)memory->permanent_storage + sizeof(GameState));
         game_state->world = push_struct(&game_state->world_arena, World);
         World* world = game_state->world;
-        world->tile_map = push_struct(&game_state->world_arena, TileMap);
 
-        TileMap* tile_map = world->tile_map;
-        initialize_tile_map(tile_map, 1.4f);
+        initialize_world(world, 1.4f);
 
         u32 tiles_per_width = 17;
         u32 tiles_per_height = 9;
@@ -599,10 +597,6 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
 
-                    set_tile_value(&game_state->world_arena, world->tile_map,
-                                   abs_tile_x, abs_tile_y, abs_tile_z,
-                                   tile_value);
-
                     if (tile_value == 2) {
                         add_wall(game_state, abs_tile_x, abs_tile_y, abs_tile_z);
                     }
@@ -632,7 +626,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
 
-        TileMapPosition new_camera_p = {};
+        WorldPosition new_camera_p = {};
         new_camera_p.abs_tile_x = screen_base_x*tiles_per_width + 17/2;
         new_camera_p.abs_tile_y = screen_base_y*tiles_per_height + 9/2;
         new_camera_p.abs_tile_z = screen_base_z;
@@ -642,10 +636,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     World* world = game_state->world;
-    TileMap* tile_map = world->tile_map;
 
     s32 tile_side_in_pixels = 60;
-    f32 meters_to_pixels = (f32)tile_side_in_pixels / tile_map->tile_side_in_meters;
+    f32 meters_to_pixels = (f32)tile_side_in_pixels / world->tile_side_in_meters;
 
     f32 lower_left_x = -((f32)tile_side_in_pixels / 2);
     f32 lower_left_y = (f32)buffer->height;
@@ -688,28 +681,28 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     v2 entity_offset_for_frame = {};
     Entity camera_following_entity = get_high_entity(game_state, game_state->camera_following_entity_index);
     if (camera_following_entity.high) {
-        TileMapPosition new_camera_p = game_state->camera_p;
+        WorldPosition new_camera_p = game_state->camera_p;
         game_state->camera_p.abs_tile_z = camera_following_entity.low->p.abs_tile_z;
 #if 1
-        if (camera_following_entity.high->p.x > (9.0f * tile_map->tile_side_in_meters)) {
+        if (camera_following_entity.high->p.x > (9.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_x += 17;
-        } else if (camera_following_entity.high->p.x < -(9.0f * tile_map->tile_side_in_meters)) {
+        } else if (camera_following_entity.high->p.x < -(9.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_x -= 17;
         }
-        if (camera_following_entity.high->p.y > (5.0f * tile_map->tile_side_in_meters)) {
+        if (camera_following_entity.high->p.y > (5.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_y += 9;
-        } else if (camera_following_entity.high->p.y < -(5.0f * tile_map->tile_side_in_meters)) {
+        } else if (camera_following_entity.high->p.y < -(5.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_y -= 9;
         }
 #else
-        if (camera_following_entity.high->p.x > (1.0f * tile_map->tile_side_in_meters)) {
+        if (camera_following_entity.high->p.x > (1.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_x += 1;
-        } else if (camera_following_entity.high->p.x < -(1.0f * tile_map->tile_side_in_meters)) {
+        } else if (camera_following_entity.high->p.x < -(1.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_x -= 1;
         }
-        if (camera_following_entity.high->p.y > (1.0f * tile_map->tile_side_in_meters)) {
+        if (camera_following_entity.high->p.y > (1.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_y += 1;
-        } else if (camera_following_entity.high->p.y < -(1.0f * tile_map->tile_side_in_meters)) {
+        } else if (camera_following_entity.high->p.y < -(1.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_y -= 1;
         }
 #endif
@@ -728,7 +721,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         for (s32 relcol = -20; relcol < 20; ++relcol) {
             u32 col = relcol + game_state->camera_p.abs_tile_x;
             u32 row = relrow + game_state->camera_p.abs_tile_y;
-            u32 tile_id = get_tile_value(tile_map, col, row, game_state->camera_p.abs_tile_z);
+            u32 tile_id = get_tile_value(world, col, row, game_state->camera_p.abs_tile_z);
             f32 gray = 0.5f;
             if (tile_id > 1) {
                 if (tile_id == 2) {
