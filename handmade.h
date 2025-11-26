@@ -37,7 +37,7 @@ struct HighEntity {
     v2 p; // relative to camera
     v2 dp;
     u32 facing_direction;
-    u32 abs_tile_z;
+    u32 chunk_z;
 
     f32 z;
     f32 dz;

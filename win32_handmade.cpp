@@ -818,7 +818,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, 
     LPVOID base_address = 0;
 #endif
     GameMemory game_memory = {};
-    game_memory.permanent_storage_size = megabytes(64);
+    game_memory.permanent_storage_size = megabytes(256);
     game_memory.transient_storage_size = gigabytes(1);
     game_memory.debug_platform_read_entire_file = debug_platform_read_entire_file;
     game_memory.debug_platform_write_entire_file = debug_platform_write_entire_file;

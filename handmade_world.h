@@ -18,10 +18,10 @@ struct WorldChunk {
 
 struct World {
     f32 tile_side_in_meters;
+    f32 chunk_side_in_meters;
 
-    s32 chunk_shift;
-    s32 chunk_mask;
-    s32 chunk_dim;
+    WorldEntityBlock* first_free;
+
     WorldChunk chunk_hash[4096];
 };
 
@@ -31,13 +31,10 @@ struct WorldDifference {
 };
 
 struct WorldPosition {
-    // These are fixed point tile locations
-    // high bits are tile chunk index
-    // low bits are the tile index in the chunk
-    s32 abs_tile_x;
-    s32 abs_tile_y;
-    s32 abs_tile_z;
+    s32 chunk_x;
+    s32 chunk_y;
+    s32 chunk_z;
 
-    // this is relative to the tile center
+    // NOTE this is relative to the chunk center
     v2 offset_;
 };

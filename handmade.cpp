@@ -205,7 +205,7 @@ internal inline HighEntity* make_entity_high_freq(GameState* game_state, u32 low
     WorldDifference diff = subtract(game_state->world, &low_entity->p, &game_state->camera_p);
     high_entity->p = diff.d_xy;
     high_entity->dp = v2{0,0};
-    high_entity->abs_tile_z = low_entity->p.abs_tile_z;
+    high_entity->chunk_z = low_entity->p.chunk_z;
     high_entity->facing_direction = 0;
     high_entity->low_entity_index = low_index;
 
@@ -261,7 +261,7 @@ internal inline void offset_and_check_frequency_by_area(GameState* game_state, v
             // make_entity_low_freq mutates array, advance index here
             ++entity_index;
         } else {
-            make_entity_low_freq(game_state, entity_index);
+            make_entity_low_freq(game_state, high->low_entity_index);
         }
     }
 }
@@ -292,13 +292,11 @@ internal u32 add_player(GameState* game_state) {
     return entity_index;
 }
 
-internal u32 add_wall(GameState* game_state, u32 abs_tile_x, u32 abs_tile_y, u32 abs_tile_z) {
+internal u32 add_wall(GameState* game_state, s32 abs_tile_x, s32 abs_tile_y, s32 abs_tile_z) {
     u32 entity_index = add_low_entity(game_state, ET_WALL);
     LowEntity* low_entity = get_low_entity(game_state, entity_index);
 
-    low_entity->p.abs_tile_x = abs_tile_x;
-    low_entity->p.abs_tile_y = abs_tile_y;
-    low_entity->p.abs_tile_z = abs_tile_z;
+    low_entity->p = chunk_position_from_tile_position(game_state->world, abs_tile_x, abs_tile_y, abs_tile_z);
     low_entity->height = game_state->world->tile_side_in_meters;
     low_entity->width = low_entity->height;
     low_entity->collides = true;
@@ -423,7 +421,8 @@ internal void move_player(GameState* game_state, Entity entity, f32 dt, v2 ddp) 
 
             HighEntity* hit_high = game_state->high_entities_ + hit_high_entity_index;
             LowEntity* hit_low = game_state->low_entities + hit_high->low_entity_index;
-            entity.high->abs_tile_z += hit_low->d_abs_tile_z;
+            // TODO stairs
+            // entity.high->abs_tile_z += hit_low->d_abs_tile_z;
         } else {
             break;
         }
@@ -461,6 +460,8 @@ internal void set_camera(GameState *game_state, WorldPosition new_camera_p) {
     v2 entity_offset_for_frame = -d_camera_p.d_xy;
     offset_and_check_frequency_by_area(game_state, entity_offset_for_frame, camera_bounds);
 
+    // TODO do this in terms of tile chunks
+#if 0
     s32 min_tile_x = new_camera_p.abs_tile_x - tile_span_x/2;
     s32 max_tile_x = new_camera_p.abs_tile_x + tile_span_x/2;
     s32 min_tile_y = new_camera_p.abs_tile_y - tile_span_y/2;
@@ -478,6 +479,7 @@ internal void set_camera(GameState *game_state, WorldPosition new_camera_p) {
             make_entity_high_freq(game_state, entity_index);
         }
     }
+#endif 
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
@@ -544,7 +546,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         bool door_bottom = false;
         bool door_up = false;
         bool door_down = false;
-        for (u32 screen_index = 0; screen_index < 2; ++screen_index) {
+        for (u32 screen_index = 0; screen_index < 200; ++screen_index) {
             u32 random_choice;
             // avoid up -> down -> up  or vice versa
             // if (door_up || door_down) {
@@ -627,9 +629,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
 
         WorldPosition new_camera_p = {};
-        new_camera_p.abs_tile_x = screen_base_x*tiles_per_width + 17/2;
-        new_camera_p.abs_tile_y = screen_base_y*tiles_per_height + 9/2;
-        new_camera_p.abs_tile_z = screen_base_z;
+        new_camera_p = chunk_position_from_tile_position(world, screen_base_x*tiles_per_width + 17/2,
+                                                         screen_base_y*tiles_per_height + 9/2,
+                                                         screen_base_z);
         set_camera(game_state, new_camera_p);
 
         memory->is_initialized = true;
@@ -682,8 +684,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Entity camera_following_entity = get_high_entity(game_state, game_state->camera_following_entity_index);
     if (camera_following_entity.high) {
         WorldPosition new_camera_p = game_state->camera_p;
-        game_state->camera_p.abs_tile_z = camera_following_entity.low->p.abs_tile_z;
-#if 1
+        new_camera_p.chunk_z = camera_following_entity.low->p.chunk_z;
+#if 0
         if (camera_following_entity.high->p.x > (9.0f * world->tile_side_in_meters)) {
             new_camera_p.abs_tile_x += 17;
         } else if (camera_following_entity.high->p.x < -(9.0f * world->tile_side_in_meters)) {
@@ -695,16 +697,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             new_camera_p.abs_tile_y -= 9;
         }
 #else
-        if (camera_following_entity.high->p.x > (1.0f * world->tile_side_in_meters)) {
-            new_camera_p.abs_tile_x += 1;
-        } else if (camera_following_entity.high->p.x < -(1.0f * world->tile_side_in_meters)) {
-            new_camera_p.abs_tile_x -= 1;
-        }
-        if (camera_following_entity.high->p.y > (1.0f * world->tile_side_in_meters)) {
-            new_camera_p.abs_tile_y += 1;
-        } else if (camera_following_entity.high->p.y < -(1.0f * world->tile_side_in_meters)) {
-            new_camera_p.abs_tile_y -= 1;
-        }
+        new_camera_p = camera_following_entity.low->p;
 #endif
 
         set_camera(game_state, new_camera_p);
