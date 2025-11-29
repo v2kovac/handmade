@@ -4,17 +4,17 @@
 #define WORLD_CHUNK_UNINITIALIZED INT32_MAX
 #define TILES_PER_CHUNK 16
 
-internal inline bool is_canonical(World* world, f32 tile_rel) {
+internal bool is_canonical(World* world, f32 tile_rel) {
     // TODO fix float point funkiness, this will be replaced dont need it
     return (tile_rel >= (-0.5f * world->chunk_side_in_meters)) &&
            (tile_rel <= (0.5f * world->chunk_side_in_meters));
 }
 
-internal inline bool is_canonical(World* world, v2 offset) {
+internal bool is_canonical(World* world, V2 offset) {
     return is_canonical(world, offset.x) && is_canonical(world, offset.y);
 }
 
-internal inline bool are_in_same_chunk(World* world, WorldPosition* a, WorldPosition* b) {
+internal bool are_in_same_chunk(World* world, WorldPosition* a, WorldPosition* b) {
     assert(is_canonical(world, a->offset_));
     assert(is_canonical(world, b->offset_));
     bool result = a->chunk_x == b->chunk_x &&
@@ -23,7 +23,7 @@ internal inline bool are_in_same_chunk(World* world, WorldPosition* a, WorldPosi
     return result;
 }
 
-internal inline WorldChunk* get_world_chunk(World* world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
+internal WorldChunk* get_world_chunk(World* world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
                                           MemoryArena* arena = 0)
 {
     assert(chunk_x > -WORLD_CHUNK_SAFE_MARGIN);
@@ -65,7 +65,7 @@ internal inline WorldChunk* get_world_chunk(World* world, s32 chunk_x, s32 chunk
     }
 }
 
-internal inline void recanonicalize_coord(World* world, s32* tile, f32* tile_rel) {
+internal void recanonicalize_coord(World* world, s32* tile, f32* tile_rel) {
     s32 offset = round_f32_to_s32(*tile_rel / world->chunk_side_in_meters);
     *tile += offset;
     *tile_rel -= (offset * world->chunk_side_in_meters);
@@ -73,7 +73,7 @@ internal inline void recanonicalize_coord(World* world, s32* tile, f32* tile_rel
     assert(is_canonical(world, *tile_rel));
 }
 
-internal inline WorldPosition map_to_tile_space(World* world, WorldPosition base_pos, v2 offset) {
+internal WorldPosition map_to_chunk_space(World* world, WorldPosition base_pos, V2 offset) {
     WorldPosition result = base_pos;
 
     result.offset_ += offset;
@@ -94,7 +94,7 @@ internal void initialize_world(World* world, f32 tile_side_in_meters) {
     }
 }
 
-internal inline WorldPosition chunk_position_from_tile_position(World* world, s32 abs_tile_x, s32 abs_tile_y, s32 abs_tile_z) {
+internal WorldPosition chunk_position_from_tile_position(World* world, s32 abs_tile_x, s32 abs_tile_y, s32 abs_tile_z) {
     WorldPosition result = {};
 
     result.chunk_x = abs_tile_x / TILES_PER_CHUNK;
@@ -108,10 +108,10 @@ internal inline WorldPosition chunk_position_from_tile_position(World* world, s3
     return result;
 }
 
-internal inline WorldDifference subtract(World* world, WorldPosition* a, WorldPosition* b) {
+internal WorldDifference subtract(World* world, WorldPosition* a, WorldPosition* b) {
     WorldDifference result;
 
-    v2 d_tile_xy = { (f32)a->chunk_x - (f32)b->chunk_x,
+    V2 d_tile_xy = { (f32)a->chunk_x - (f32)b->chunk_x,
                      (f32)a->chunk_y - (f32)b->chunk_y };
     f32 d_tile_z = (f32)a->chunk_z - (f32)b->chunk_z;
 
@@ -121,7 +121,7 @@ internal inline WorldDifference subtract(World* world, WorldPosition* a, WorldPo
     return result;
 }
 
-internal inline WorldPosition centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
+internal WorldPosition centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
     WorldPosition result = {};
     result.chunk_x = chunk_x;
     result.chunk_y = chunk_y;
@@ -129,7 +129,7 @@ internal inline WorldPosition centered_chunk_point(u32 chunk_x, u32 chunk_y, u32
     return result;
 }
 
-internal inline void change_entity_location(MemoryArena* arena, World* world, u32 low_entity_index,
+internal void change_entity_location(MemoryArena* arena, World* world, u32 low_entity_index,
                                             WorldPosition* old_p, WorldPosition* new_p)
 {
     if (old_p && are_in_same_chunk(world, old_p, new_p)) return;
@@ -151,14 +151,14 @@ internal inline void change_entity_location(MemoryArena* arena, World* world, u3
                             next_block->next = world->first_free;
                             world->first_free = next_block;
                         }
-                        block = NULL;
-                        break;
+                        goto end_loops;
                     }
                 }
             }
         }
     }
 
+    end_loops:
     WorldChunk* chunk = get_world_chunk(world, new_p->chunk_x, new_p->chunk_y, new_p->chunk_z, arena);
     assert(chunk);
 

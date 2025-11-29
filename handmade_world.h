@@ -26,7 +26,7 @@ struct World {
 };
 
 struct WorldDifference {
-    v2 d_xy;
+    V2 d_xy;
     f32 d_z;
 };
 
@@ -36,5 +36,5 @@ struct WorldPosition {
     s32 chunk_z;
 
     // NOTE this is relative to the chunk center
-    v2 offset_;
+    V2 offset_;
 };

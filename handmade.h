@@ -34,8 +34,8 @@ enum EntityType {
 };
 
 struct HighEntity {
-    v2 p; // relative to camera
-    v2 dp;
+    V2 p; // relative to camera
+    V2 dp;
     u32 facing_direction;
     u32 chunk_z;
 
@@ -86,6 +86,7 @@ struct GameState {
     LoadedBitmap backdrop;
     LoadedBitmap shadow;
     HeroBitmaps hero_bitmaps[4];
+    LoadedBitmap tree;
 };
 
 internal void initialize_arena(MemoryArena* arena, size_t size, u8* base) {

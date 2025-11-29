@@ -576,13 +576,13 @@ internal f32 process_xinput_stick_value(SHORT value, SHORT deadzone_threshold) {
     return result;
 }
 
-internal inline LARGE_INTEGER get_wall_clock() {
+internal LARGE_INTEGER get_wall_clock() {
     LARGE_INTEGER result;
     QueryPerformanceCounter(&result);
     return result;
 }
 
-internal inline f32 get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
+internal f32 get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = (f32)(end.QuadPart - start.QuadPart) / (f32)g_perf_count_frequency;
     return result;
 }
@@ -606,7 +606,7 @@ internal void debug_draw_vertical(int x, int top, int bottom, u32 color) {
     }
 }
 
-internal inline void draw_sound_buffer_marker(SoundOutput* sound_output,
+internal void draw_sound_buffer_marker(SoundOutput* sound_output,
                                             f32 c,
                                             int pad_x,
                                             int top,

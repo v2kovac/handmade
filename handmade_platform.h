@@ -149,13 +149,13 @@ typedef struct {
     debug_platform_write_entire_file_func* debug_platform_write_entire_file;
 } GameMemory;
 
-internal inline u32 safe_truncate_uint64(u64 value) {
+internal u32 safe_truncate_uint64(u64 value) {
     assert(value <= 0xFFFFFF);
     u32 result = (u32)value;
     return result;
 }
 
-internal inline GameControllerInput* get_controller(GameInput* input, int controller_index) {
+internal GameControllerInput* get_controller(GameInput* input, int controller_index) {
     assert(controller_index < array_count(input->controllers));
     return &input->controllers[controller_index];
 }
